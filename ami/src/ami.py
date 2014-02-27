@@ -8,6 +8,7 @@ import configparser
 from termcolor import colored
 import helpers
 import def_fstatus
+import cPickle as pickle
 
 
 class AmiDC(object):
@@ -29,12 +30,45 @@ class AmiDC(object):
             self.vprint("Initialising ROACHes passively")
             self.initialise_f_engines(passive=passive)
             self.initialise_x_engines(passive=passive)
+            self.load_sync()
         else:
             self.program_all()
 
     def vprint(self,message):
         if self.verbose:
             print message
+
+    def arm_sync(self, send_sync=False):
+        """Arms all F engines, records arm time in config file. Returns the UTC time at which the system was sync'd in seconds since the Unix epoch (MCNT=0)"""
+        #wait for within 100ms of a half-second, then send out the arm signal.
+        #TODO This code is ripped from medicina. Is it even right?
+        ready=0
+        while not ready:
+            ready=((int(time.time()*10+5)%10)==0)
+        self.sync_time=int(time.time())+1
+        self.all_fengs('arm_trigger')
+        if send_sync:
+            # send two syncs, as the first is flushed
+            self.all_fengs('man_sync')
+            self.all_fengs('man_sync')
+        base_dir = os.path.dirname(self.config_file)
+        base_name = os.path.basename(self.config_file)
+        pkl_file = base_dir + "/sync_" + base_name.split(".xml")[0]+".pkl"
+        pickle.dump(self.sync_time, open(pkl_file, "wb"))
+        return self.sync_time
+
+    def load_sync(self):
+        """Determines if a pickle file with the sync_time exists, returns that value else return 0"""
+        base_dir = os.path.dirname(self.config_file)
+        base_name = os.path.basename(self.config_file)
+        pkl_file = base_dir + "/sync_" + base_name.split(".xml")[0]+".pkl"
+        try:
+            self.sync_time = pickle.load(open(pkl_file))
+        except:
+            print "No previous Sync Time found, defaulting to 0 seconds since the Unix Epoch"
+            self.sync_time = 0
+        return self.sync_time
+
 
     def parse_config_file(self):
         self.config = configparser.SafeConfigParser()
@@ -44,11 +78,14 @@ class AmiDC(object):
         self.n_bands = self.config.getint('correlator_hard','n_bands')
         self.n_inputs= self.config.getint('correlator_hard','inputs_per_board')
         self.n_chans = self.config.getint('correlator_hard','n_chans')
+        self.n_pols = self.config.getint('correlator_hard','n_pols')
         self.output_format = self.config.get('correlator_hard','output_format')
         self.acc_len = self.config.getint('correlator','acc_len')
+        self.data_path = self.config.get('correlator','data_path')
         self.roaches = self.config['hardware'].get('roaches').split(',')
         self.adc_clk = self.config.getint('hardware','adc_clk')
         self.lo_freq = self.config.getint('hardware','mix_freq')
+        self.n_bls = (self.n_ants * (self.n_ants+1))/2
         #shortcuts to sections
         self.c_testing = self.config['testing']
         self.c_correlator = self.config['correlator']
@@ -338,14 +375,15 @@ class XEngine(Engine):
 class AmiSbl(AmiDC):
     def __init(self,config_file=None,verbose=False,passive=True):
         AmiDC.__init__(self,config_file=config_file,verbose=verbose,passive=passive)
-    def snap_corr(self):
+    def snap_corr(self,wait=True,combine_complex=True):
         xeng = self.xengs[0]
-        mcnt = xeng.read_int('mcnt_lsb')
-        #sleep until there's a new correlation
-        while xeng.read_int('mcnt_lsb') == mcnt:
-            time.sleep(0.01)
-        mcnt_msb = xeng.read_int('mcnt_lsb')
-        mcnt_lsb = xeng.read_int('mcnt_lsb')
+        if wait:
+            mcnt = xeng.read_int('mcnt_lsb')
+            #sleep until there's a new correlation
+            while xeng.read_int('mcnt_lsb') == mcnt:
+                time.sleep(0.01)
+        mcnt_msb = xeng.read_uint('mcnt_msb')
+        mcnt_lsb = xeng.read_uint('mcnt_lsb')
         mcnt = (mcnt_msb << 32) + mcnt_lsb
         pack_format = '>%d%s'%(self.n_chans,str(self.output_format))
         c_pack_format = '>%d%s'%(2*self.n_chans,str(self.output_format))
@@ -353,7 +391,20 @@ class AmiSbl(AmiDC):
         snap00   = np.array(struct.unpack(pack_format,xeng.read('corr00_bram',n_bytes)))
         snap11   = np.array(struct.unpack(pack_format,xeng.read('corr11_bram',n_bytes)))
         snap01   = np.array(struct.unpack(c_pack_format,xeng.read('corr01_bram',2*n_bytes)))
-        snap01c   = np.array(snap01[1::2] + 1j*snap01[0::2], dtype=complex)
-        if mcnt_lsb != xeng.read_int('mcnt_lsb'):
+        #snap01c   = np.array(snap01[1::2] + 1j*snap01[0::2], dtype=complex)
+        #snap00   = np.zeros(self.n_chans)
+        #snap11   = np.zeros(self.n_chans)
+        #snap01   = np.zeros(2*self.n_chans)
+        if combine_complex:
+            snap01   = np.array(snap01[1::2] + 1j*snap01[0::2], dtype=complex)
+        if mcnt_lsb != xeng.read_uint('mcnt_lsb'):
+            print mcnt_lsb, xeng.read_uint('mcnt_lsb')
             raise RuntimeError("SNAP CORR: mcnt changed before snap completed!")
-        return {'corr00':snap00,'corr11':snap11,'corr01':snap01c,'timestamp':mcnt}
+        return {'corr00':snap00,'corr11':snap11,'corr01':snap01,'timestamp':self.mcnt2time(mcnt)}
+    def mcnt2time(self,mcnt):
+        """
+        Convert an mcnt to a UTC time
+        """
+        conv_factor = 16./(self.adc_clk*1e6)
+        offset = self.sync_time
+        return offset + mcnt*conv_factor
