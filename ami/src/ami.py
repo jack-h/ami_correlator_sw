@@ -9,6 +9,7 @@ from termcolor import colored
 import helpers
 import def_fstatus
 
+
 class AmiDC(object):
     def __init__(self,config_file=None,verbose=False,passive=True):
         self.verbose = verbose
@@ -43,6 +44,7 @@ class AmiDC(object):
         self.n_bands = self.config.getint('correlator_hard','n_bands')
         self.n_inputs= self.config.getint('correlator_hard','inputs_per_board')
         self.n_chans = self.config.getint('correlator_hard','n_chans')
+        self.output_format = self.config.get('correlator_hard','output_format')
         self.acc_len = self.config.getint('correlator','acc_len')
         self.roaches = self.config['hardware'].get('roaches').split(',')
         self.adc_clk = self.config.getint('hardware','adc_clk')
@@ -209,7 +211,7 @@ class Engine(object):
         return self.roachhost.read_uint(self.expand_name(dev_name), **kwargs)
 
     def read(self, dev_name, size, *args, **kwargs):
-        self.roachhost.read(self.expand_name(dev_name), size, **kwargs)
+        return self.roachhost.read(self.expand_name(dev_name), size, **kwargs)
         
     def write(self, dev_name, data, *args, **kwargs):
         self.roachhost.write(self.expand_name(dev_name), data, **kwargs)
@@ -333,6 +335,25 @@ class XEngine(Engine):
     def set_tge_inputs():
         pass
 
-
-  
-
+class AmiSbl(AmiDC):
+    def __init(self,config_file=None,verbose=False,passive=True):
+        AmiDC.__init__(self,config_file=config_file,verbose=verbose,passive=passive)
+    def snap_corr(self):
+        xeng = self.xengs[0]
+        mcnt = xeng.read_int('mcnt_lsb')
+        #sleep until there's a new correlation
+        while xeng.read_int('mcnt_lsb') == mcnt:
+            time.sleep(0.01)
+        mcnt_msb = xeng.read_int('mcnt_lsb')
+        mcnt_lsb = xeng.read_int('mcnt_lsb')
+        mcnt = (mcnt_msb << 32) + mcnt_lsb
+        pack_format = '>%d%s'%(self.n_chans,str(self.output_format))
+        c_pack_format = '>%d%s'%(2*self.n_chans,str(self.output_format))
+        n_bytes = struct.calcsize(pack_format)
+        snap00   = np.array(struct.unpack(pack_format,xeng.read('corr00_bram',n_bytes)))
+        snap11   = np.array(struct.unpack(pack_format,xeng.read('corr11_bram',n_bytes)))
+        snap01   = np.array(struct.unpack(c_pack_format,xeng.read('corr01_bram',2*n_bytes)))
+        snap01c   = np.array(snap01[1::2] + 1j*snap01[0::2], dtype=complex)
+        if mcnt_lsb != xeng.read_int('mcnt_lsb'):
+            raise RuntimeError("SNAP CORR: mcnt changed before snap completed!")
+        return {'corr00':snap00,'corr11':snap11,'corr01':snap01c,'timestamp':mcnt}
