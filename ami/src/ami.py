@@ -146,9 +146,9 @@ class Engine(object):
         self.reg_suffix = reg_suffix
         self.reg_prefix = reg_prefix
         if connect_passively:
-            self.initialise_ctrl_sw()
-        else:
             self.get_ctrl_sw()
+        else:
+            self.initialise_ctrl_sw()
 
     def initialise_ctrl_sw(self):
         """Initialises the control software register to zero."""
