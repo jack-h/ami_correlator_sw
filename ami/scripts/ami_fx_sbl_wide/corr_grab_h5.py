@@ -16,11 +16,14 @@ def write_data(writer, d, timestamp, meta):
            val = meta.__getattribute__(name)
            try:
                length = len(val)
+               data_type = type(val[0])
            except TypeError:
                length = 1
-           writer.append_data(name, [length], val)
-    writer.append_data('xeng_raw0', d.shape, d)
-    writer.append_data('timestamp0', [1], timestamp)
+               data_type = type(val)
+           #print name,val,data_type
+           writer.append_data(name, [length], val, data_type)
+    writer.append_data('xeng_raw0', d.shape, d, np.int64)
+    writer.append_data('timestamp0', [1], timestamp, np.int64)
 
 
 if __name__ == '__main__':
@@ -68,14 +71,13 @@ if __name__ == '__main__':
             if (ctrl.try_recv()==0):
                 cnt+=1
                 print "received metadata with timestamp", ctrl.meta_data.timestamp
-                receiver_enable = bool(ctrl.meta_data.obs_status)
-                if ctrl.meta_data.obs_status == 0:
-                    print "OBS STATUS == 0"
+                receiver_enable = (ctrl.meta_data.obs_status==4)
+                if not receiver_enable:
+                    print "OBS NOT ACTIVE. CLOSING FILES"
                     #set current obs to none so the next valid obs will trigger a new file
                     current_obs = None
                     writer.close_file()
-                    continue
-                if ctrl.meta_data.obs_name != current_obs:
+                elif ctrl.meta_data.obs_name != current_obs:
                     writer.close_file()
                     fname = 'corr_%s_%d.h5'%(ctrl.meta_data.obs_name, ctrl.meta_data.timestamp)
                     print "Starting a new file with name", fname
@@ -87,13 +89,16 @@ if __name__ == '__main__':
                 if mcnt != mcnt_old:
                     mcnt_old = mcnt
                     d = corr.snap_corr(wait=False,combine_complex=False)
-                    datavec[:,0,0,0] = d['corr00']
-                    datavec[:,1,0,0] = d['corr11']
-                    datavec[:,2,0,0] = d['corr01'][0::2]
-                    datavec[:,2,0,1] = d['corr01'][1::2]
-                    print "got new data with timestamp",d['timestamp']
-                    ctrl.try_send(d['timestamp'],cnt,cnt,d['corr01'])
-                    write_data(writer,datavec,d['timestamp'],ctrl.meta_data)
+                    if d is not None:
+                        datavec[:,0,0,1] = d['corr00']
+                        datavec[:,1,0,1] = d['corr11']
+                        datavec[:,2,0,1] = d['corr01'][1::2] #datavec[:,:,:,1] should be real
+                        datavec[:,2,0,0] = d['corr01'][0::2] #datavec[:,:,:,0] should be imag
+                        print "got new data with timestamp",d['timestamp']
+                        ctrl.try_send(d['timestamp'],cnt,cnt,d['corr01'])
+                        write_data(writer,datavec,d['timestamp'],ctrl.meta_data)
+                    else:
+                        print "Failed to send because MCNT changed during snap"
                     #cnt += 1
         except KeyboardInterrupt:
             print 'Received keyboard interrupt. Closing files and exiting'
