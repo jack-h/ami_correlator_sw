@@ -2,6 +2,7 @@ import struct
 import configparser
 import socket
 import os
+import string
 
 class AmiControlInterface(object):
     """
@@ -11,6 +12,10 @@ class AmiControlInterface(object):
     and digital correlator data sets to the original pipeline
     """
     def __init__(self,config_file=None):
+        """
+        Initialise the interface, based on the config_file provided, or the AMI_DC_CONF
+        environment variable is config_file=None
+        """
         if config_file is None:
             self.config_file = os.environ.get('AMI_DC_CONF')
             if self.config_file is None:
@@ -28,6 +33,9 @@ class AmiControlInterface(object):
         except:
             pass
     def parse_config_file(self):
+        """
+        Parse the config file, saving some values as attributes for easy access
+        """
         self.config = configparser.SafeConfigParser()
         self.config.read(self.config_file)
         #relevant parameters
@@ -50,6 +58,9 @@ class AmiControlInterface(object):
         self.tsock.close()
         self.rsock.close()
     def connect_sockets(self):
+        """
+        Connect the tx/rx sockets to the correlator control server
+        """
         self.rsock.settimeout(1.00)
         print self.control_ip
         print self.data_port
@@ -59,6 +70,11 @@ class AmiControlInterface(object):
         self.tsock.connect((self.control_ip,self.data_port))
         self.tsock.settimeout(0.01)
     def try_recv(self):
+        """
+        Try and receive meta-data from the control server.
+        Return None if the read times out, or 0 if the read
+        is successful. Unpack read data into meta data attributes
+        """
         try:
             d = self.rsock.recv(self.meta_data.size)
         except socket.timeout:
@@ -67,21 +83,28 @@ class AmiControlInterface(object):
             self.meta_data.extract_attr(d)
             return 0
     def try_send(self, timestamp, status, nsamp, d):
-            data_str = self.data.pack(timestamp, status, nsamp, *d)
-            try:
-                self.tsock.send(data_str)
-                return 0
-            except socket.error:
-                print "lost TX connection"
-                self.tsock.close()
-                return -1
+        """
+        Try and send a data set to the control server.
+        Return 0 if successful, -1 if not (and close tx socket)
+        """
+        data_str = self.data.pack(timestamp, status, nsamp, *d)
+        try:
+            self.tsock.send(data_str)
+            return 0
+        except socket.error:
+            print "lost TX connection"
+            self.tsock.close()
+            return -1
 
         
 class AmiMetaData(object):
+    """
+    A class encapsulating AMI meta data properties
+    """
     def __init__(self,n_ants=10,n_agcs=40):
         """
-        A simple class of which allows unpacking of data into
-        specific attributes, some with array formatting
+        Instantiate a meta-data object, which expects data from
+        n_ants antennas and n_agcs gain control units.
         """
         self.n_ants = n_ants
         self.n_agcs = n_agcs
@@ -108,6 +131,10 @@ class AmiMetaData(object):
         self.size = struct.calcsize(whole_format)
 
     def gen_offsets(self):
+        """
+        Generate the offsets of each value in the meta data struct,
+        to allow unpacking later
+        """
         offset = 0
         for entry in self.entries:
             entry['offset'] = offset
@@ -115,14 +142,14 @@ class AmiMetaData(object):
 
     def extract_attr(self,data):
         """
-        update the attributes with the values packed in 'data'
+        update the meta_data attributes with the values packed in 'data'
         """
         for entry in self.entries:
             val = struct.unpack_from(entry['form'],data,entry['offset'])
             if len(val) == 1:
                 val = val[0]
             if entry['name'] is 'obs_name':
-                self.__setattr__(entry['name'],val.rstrip('\x00'))
+                self.__setattr__(entry['name'],val.split('\x00')[0]) #first part of string upto null byte
             else:
                 self.__setattr__(entry['name'],val)
 
@@ -132,5 +159,9 @@ class DataStruct(struct.Struct):
     A subclass of Struct to encapsulate correlator data and timestamp
     """
     def __init__(self, n_chans=2048):
+        """
+        Initialise a data structure for a timestamp, status flag, count number,
+        and n_chans oof complex data.
+        """
         form = '!Lii%dl'%(2*n_chans)
         struct.Struct.__init__(self,form)

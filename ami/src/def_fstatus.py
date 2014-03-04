@@ -1,3 +1,18 @@
+"""
+Define a status dictionary here, which encodes the names of flags in the F-engine
+status registers. Each entry should appear as a key to the status dictionary.
+This key should hold a dictionary itself, with 'start_bit', 'width' and 'default'
+keys.
+start_bit : the first (lowest) bit of the flag in the F-engine status register
+width : the width, in bits, of the flag
+default: The value the flag is expected to hold if the F-engine is operating correctly
+(The default value is used to highlight suspicious flag values to the user)
+
+e.g.:
+status = {'feng_ok'    : {'start_bit':0, 'width':1, 'default':True},
+          'feng_broken': {'start_bit':1, 'width':1, 'default':False}}
+"""
+
 status = {
           'dram_bad'          :{'start_bit':6,  'width':1, 'default':False},
           'clk_bad'           :{'start_bit':5,  'width':1, 'default':False}, 
