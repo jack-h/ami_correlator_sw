@@ -3,3 +3,4 @@
 ami/ami.egg-info
 ami/build
 ami/dist
+*.swp
