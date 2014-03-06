@@ -163,5 +163,5 @@ class DataStruct(struct.Struct):
         Initialise a data structure for a timestamp, status flag, count number,
         and n_chans oof complex data.
         """
-        form = '!Lii%dl'%(2*n_chans)
+        form = '!lii%dl'%(2*n_chans)
         struct.Struct.__init__(self,form)
