@@ -38,7 +38,7 @@ if __name__ == '__main__':
     o.add_option('--namemap', dest='namemap', default=None,
         help='Pass a file with a list of human-readable names for antennas')
     o.add_option('-f', '--freqaxis', dest='freqaxis', default=False, action='store_true',
-        help='Plot frequency (rather than channel) as x axis.')
+        help='Plot frequency or delay (rather than channel) as x axis.')
     o.add_option('--make_unique', dest='make_unique', default=False, action='store_true',
         help='use this option to prevent duplicate plotting')
     o.add_option('-s', '--savefig', dest='savefig', default=None,
@@ -134,21 +134,31 @@ def convert_pol(arg):
         for pi in arg: rv.append(pol_map[pi])
         return rv
 
-def get_freq_range(fh):
+def get_freq_range(fh,delay=False):
     """return array of frequency channel bin center values"""
     cf = fh.attrs.get('center_freq')
     n_chans = fh.attrs.get('n_chans')
     bw = fh.attrs.get('bandwidth')
     start_freq = cf - (bw/2)
-    freq_range = numpy.arange(start_freq,start_freq+bw,bw/n_chans)/1e6
-    unit = 'MHz'
-    return unit,freq_range
+    bin_width = bw/float(n_chans)
+    freq_range = numpy.arange(start_freq,start_freq+bw,bw/n_chans)
+    delay_max = 1./(2*bin_width)*1e3 # in nanoseconds
+    delay_range = numpy.arange(-delay_max,delay_max,2*delay_max/n_chans)
+    funit = 'MHz'
+    dunit = 'ns'
+    if delay:
+        return 'Delay',dunit,delay_range
+    else:
+        return 'Frequency',funit,freq_range
 
 def gen_obs(lat=None,long=None,el=0,telescope=None):
     obs = ephem.Observer()
     if telescope == 'Medicina' or telescope == 'MEDICINA':
         obs.lat = '44:31:24.88'
         obs.long = '11:38:45.56'
+    if telescope == 'AMI':
+        obs.lat = '52:10:14.2'
+        obs.long = '0:2:20.0'
     elif ((lat is not None) and (long is not None)):
         obs.lat = lat
         obs.long = long
@@ -219,9 +229,9 @@ for fi, fname in enumerate(fnames):
     if fi==0:
         # Generate the ephem Observer from the location of the observatory in the file
         try: telescope = get_attr(fh,'telescope')
-        except: telescope = 'MEDICINA'
+        except: telescope = 'AMI'
 
-        try: source = get_attr(fh,'source')
+        try: source = get_attr(fh,'obs_name')
         except: source = None
         print 'Telescope: %s' %telescope
         print 'Source: %s' %source
@@ -229,7 +239,7 @@ for fi, fname in enumerate(fnames):
             #if we are plotting hour angles we need to know where the observatory is
             obs = gen_obs(telescope=telescope)
         # get the frequency axis
-        freq_unit, freq_range = get_freq_range(fh)
+        axis_name, freq_unit, freq_range = get_freq_range(fh,delay=opts.delay)
         if 'pol' in fh.keys() and opts.pol.startswith('all'):
             unique_pols = list(numpy.unique(fh['pol']))
             pols = []
@@ -367,20 +377,19 @@ for cnt,bl in enumerate(bl_index):
         print '.',
         sys.stdout.flush()
         if opts.water:
-            if opts.mode.startswith('phs'):
-                im = pylab.imshow(di, vmin=-numpy.pi, vmax=numpy.pi,aspect='auto')
-                pylab.set_cmap('hsv')
-            else:
-                im = pylab.imshow(di, aspect='auto')
-            #pylab.pcolor(di)
-            frange = freq_range[-1] - freq_range[0]
+            frange = float(freq_range[-1] - freq_range[0])
             nchans = len(freq_range)
             bin_width = frange/nchans
-            tickspace = numpy.ceil(frange/6.)
-            frange_ints = numpy.arange(numpy.ceil(freq_range[0]),numpy.floor(freq_range[-1])+1e-5,tickspace,dtype=int)
-            frange_locs = (frange_ints - freq_range[0]) / bin_width
+            extent_min = freq_range[0]
+            extent_max = freq_range[-1]
+            if opts.mode.startswith('phs'):
+                im = pylab.imshow(di, vmin=-numpy.pi, vmax=numpy.pi, aspect='auto',extent=(extent_min,extent_max,di.shape[0],0))
+                pylab.set_cmap('hsv')
+            else:
+                im = pylab.imshow(di, aspect='auto',extent=(extent_min,extent_max,di.shape[0],0))
+            #pylab.pcolor(di)
 
-            pylab.xticks(frange_locs,frange_ints)
+
             # Set the x axis to be hours/mins/secs
             if opts.time_scale == 'ha' or opts.time_scale == 'lst':
                 yticks_loc, yticks_labels = pylab.yticks()
@@ -432,7 +441,7 @@ for cnt,bl in enumerate(bl_index):
                         pylab.plot(freq_range,di[t].imag)
                     else: pylab.plot(freq_range,di[t])
                 pylab.xlim(freq_range[0],freq_range[-1])
-                pylab.xlabel('Frequency (%s)'%freq_unit)
+                pylab.xlabel('%s (%s)'%(axis_name,freq_unit))
                 pylab.ylabel('%s'%y_label)
                     #pylab.plot(di[t], label=label)
 
@@ -495,8 +504,8 @@ if opts.water:
     xax.set_axis_off()
     xax.set_xlim(0,1)
     xax.set_ylim(0,1)
-    xax.text(0.5,0.5,'Frequency (%s)'%freq_unit,
-             horizontalalignment='center', verticalalignment='top')
+    xax.text(0.5,0.5,'%s (%s)'%(axis_name,freq_unit),
+                 horizontalalignment='center', verticalalignment='top')
 
 if opts.savefig is not None:
     pylab.savefig(opts.savefig, bbox_inches='tight')
