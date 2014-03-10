@@ -5,7 +5,6 @@ General plotting tool to plot SPEAD based correlator output
 
 import numpy, pylab, h5py, time, sys, math
 import ephem
-import poxy
 
 if __name__ == '__main__':
     from optparse import OptionParser
@@ -266,7 +265,6 @@ for fi, fname in enumerate(fnames):
             m2,m1=map(int,opts.shape.split('_'))
         
         n_ants = fh.attrs.get('n_ants')
-        if bl_order is None: bl_order = poxy.casper.get_bl_order(n_ants)
         if opts.chan_index == 'all': chan_index = range(0,fh.attrs.get('n_chans'))
         else: chan_index = convert_arg_range(opts.chan_index)
         if opts.freqaxis:
