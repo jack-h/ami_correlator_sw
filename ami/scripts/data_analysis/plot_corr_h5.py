@@ -9,7 +9,7 @@ import ephem
 if __name__ == '__main__':
     from optparse import OptionParser
     o = OptionParser()
-    o.set_usage('%prog [options] CONFIG_FILE')
+    o.set_usage('%prog [options] H5_DATA_FILE')
     o.set_description(__doc__)
     o.add_option('-a', '--ant', dest='ant', default=None,
         help='For corrected data with a bl table select which antennas to plot, <ant_i> will plot all bls with that antenna, <ant_i>_<ant_j> will plot that baseline, auto: plot auto correlations')
