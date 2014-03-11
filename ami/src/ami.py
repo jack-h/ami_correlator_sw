@@ -117,6 +117,8 @@ class AmiDC(object):
         self.c_correlator = self.config['correlator']
         self.c_correlator_hard = self.config['correlator_hard']
         self.c_hardware= self.config['hardware']
+        #array config file
+        self.array_cfile = self.config.get('array','array_layout')
         # some debugging / info
         self.vprint("ROACHes are %r"%self.roaches)
 
@@ -217,6 +219,9 @@ class AmiDC(object):
             self.xengs = []
         for fn,feng in enumerate(self.fengs):
             feng.calibrate_adc(verbosity=int(self.verbose))
+    def get_array_config(self):
+        pass
+        
 
 class Roach(katcp.FpgaClient):
     '''
@@ -692,7 +697,7 @@ class AmiSbl(AmiDC):
         #snap11   = np.zeros(self.n_chans)
         #snap01   = np.zeros(2*self.n_chans)
         if combine_complex:
-            snap01   = np.array(snap01[1::2] + 1j*snap01[0::2], dtype=complex)
+            snap01   = np.array(snap01[0::2] + 1j*snap01[1::2], dtype=complex)
         if mcnt_lsb != xeng.read_uint('mcnt_lsb'):
             print mcnt_lsb, xeng.read_uint('mcnt_lsb')
             print "SNAP CORR: mcnt changed before snap completed!"
