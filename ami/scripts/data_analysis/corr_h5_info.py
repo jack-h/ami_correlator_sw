@@ -40,8 +40,8 @@ for fi, fname in enumerate(fnames):
 
     if 'history' in fh.keys():
         print '\nHistory:'
-        print fh['history'].value
-        #for hv in fh['history'].value: print '\t',hv
+        #print fh['history'].value
+        for hv in fh['history'].value: print '    ',hv
   
     print '\nLayout:'
     print_all_keys(fh,'')
