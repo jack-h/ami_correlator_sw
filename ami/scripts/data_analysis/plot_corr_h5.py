@@ -15,7 +15,7 @@ if __name__ == '__main__':
         help='For corrected data with a bl table select which antennas to plot, <ant_i> will plot all bls with that antenna, <ant_i>_<ant_j> will plot that baseline, auto: plot auto correlations')
     o.add_option('-c', dest='chan_index', default='all',
         help='Select which channels to plot. Options are <ch_i>,...,<ch_j>, or a range <ch_i>_<ch_j>. Default=all')
-    o.add_option('-i', '--index', dest='bl_index', default=0,
+    o.add_option('-i', '--index', dest='bl_index', default='0',
         help='Select which baseline index. Options are <bl0>,...,<bln>, or a range <bl0>_<bln>. Default=0')
     o.add_option('-m', '--mode', dest='mode', default='lin',
         help='Plotting mode: lin, log, real, imag, phs, comp. Default=log')
@@ -52,6 +52,8 @@ if __name__ == '__main__':
         help='Take FFT of frequency axis to go to delay (t) space.')
     o.add_option('-F', '--fringe', dest='fringe', action='store_true',
         help='Take FFT of time axis to go to fringe (Hz) space.')
+    o.add_option('-S', '--swapri', dest='swapri', action='store_true',
+        help='swap the real/imag components (for use with messed up data files pre 6pm 11/03/2014)')
     o.add_option('--shape', dest='shape', default=None,
         help='x_y dimensions of subplot. Default: squareish')
     opts, args = o.parse_args(sys.argv[1:])
@@ -315,9 +317,15 @@ for cnt,bl in enumerate(bl_index):
 
         dmin,dmax = None,None
     for pi,pol in enumerate(pols):
-        #real: 1
-        #imag: 0
-        di = d[:,:,cnt,pi,1] + d[:,:,cnt,pi,0]*1j
+        if len(d.shape)==5:
+            #real: 1
+            #imag: 0
+            # complexify
+            di = numpy.array(d[:,:,cnt,pi,1] + d[:,:,cnt,pi,0]*1j, dtype=numpy.complex64)
+        else:
+            di = d[:,:,cnt,pi]
+        if opts.swapri:
+            di = numpy.imag(di) + 1j*numpy.real(di)
         if flags != None:
             print di.shape
             di=numpy.ma.array(di,mask=flags[:,:,cnt,pi])
