@@ -62,8 +62,6 @@ class AmiControlInterface(object):
         Connect the tx/rx sockets to the correlator control server
         """
         self.rsock.settimeout(1.00)
-        print self.control_ip
-        print self.data_port
         self.rsock.connect((self.control_ip,self.meta_port))
         self.rsock.settimeout(0.01)
         self.tsock.settimeout(1.00)
@@ -145,7 +143,6 @@ class AmiMetaData(object):
         update the meta_data attributes with the values packed in 'data'
         """
         for entry in self.entries:
-            print entry
             val = struct.unpack_from(entry['form'],data,entry['offset'])
             if len(val) == 1:
                 val = val[0]
