@@ -79,7 +79,7 @@ class AmiControlInterface(object):
             d = self.rsock.recv(self.meta_data.size)
         except socket.timeout:
             return None
-        if d > 0:
+        if len(d) == self.meta_data.size:
             self.meta_data.extract_attr(d)
             return 0
     def try_send(self, timestamp, status, nsamp, d):
@@ -145,6 +145,7 @@ class AmiMetaData(object):
         update the meta_data attributes with the values packed in 'data'
         """
         for entry in self.entries:
+            print entry
             val = struct.unpack_from(entry['form'],data,entry['offset'])
             if len(val) == 1:
                 val = val[0]
