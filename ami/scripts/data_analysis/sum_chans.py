@@ -40,10 +40,10 @@ def sum_chan(cm,dec):
     nfreqs=cm.shape[1]
     nbls=cm.shape[2]
     npols=cm.shape[3]
-    dec_cm=n.zeros((nts,nfreqs/dec,nbls,npols,2))
+    dec_cm=n.zeros((nts,nfreqs/dec,nbls,npols),dtype=n.complex64)
     ch_index=0
     for ch in range(nfreqs/dec):
-        next_cm=n.zeros((nts,nbls,npols,2))
+        next_cm=n.zeros((nts,nbls,npols),dtype=n.complex64)
         for i in range(dec):
             next_cm+=cm[:,ch_index+i]
         next_cm=next_cm/dec
@@ -66,6 +66,10 @@ for fni in args:
     for item in fhi.iteritems():
         if item[0] == 'xeng_raw0':
             cm=fhi.get(item[0]) 
+            #complexify
+            if len(cm.shape) == 5:
+                print "complexifying input data"
+                cm = np.array(cm[:,:,:,:,1] + 1j*cm[:,:,:,:,0],dtype=np.complex64)
         else:
             if type(fhi[item[0]]) == h5py.highlevel.Group:
                 tmp_grp = fhi.get(item[0])
