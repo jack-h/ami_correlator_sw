@@ -97,8 +97,8 @@ if __name__ == '__main__':
                     if d is not None:
                         datavec[:,0,0,1] = d['corr00']
                         datavec[:,1,0,1] = d['corr11']
-                        datavec[:,2,0,1] = d['corr01'][1::2] #datavec[:,:,:,1] should be real
-                        datavec[:,2,0,0] = d['corr01'][0::2] #datavec[:,:,:,0] should be imag
+                        datavec[:,2,0,1] = d['corr01'][0::2] #datavec[:,:,:,1] should be real
+                        datavec[:,2,0,0] = d['corr01'][1::2] #datavec[:,:,:,0] should be imag
                         print "got new meta-data with timestamp",d['timestamp']
                         maxd = np.max(np.abs(d['corr01']))
                         if scale is None:
@@ -110,6 +110,9 @@ if __name__ == '__main__':
                         txdata[txdata>(2**31-1)] = 2**31 - 1
                         txdata[txdata<-(2**31)] = -(2**31)
                         txdata = np.array(np.round(txdata,0),dtype=np.int32)
+
+                        #for datan,data in enumerate(txdata):
+                        #    print "Sending data. Index %4d, %d"%(datan,data)
 
                         if not opts.test_tx:
                             ctrl.try_send(d['timestamp'],1,cnt,txdata)
