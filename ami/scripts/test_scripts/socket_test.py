@@ -139,9 +139,9 @@ if __name__ == "__main__":
     
     # Open the the socket to send correlator data to
     tsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    rsock.settimeout(1.01)
+    tsock.settimeout(1.01)
     tsock.connect((AMISA_IP,TCP_PORT_T))
-    rsock.settimeout(0.01)
+    tsock.settimeout(0.01)
     
     cnt = 0
     
