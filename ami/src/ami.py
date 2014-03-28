@@ -156,7 +156,8 @@ class AmiDC(object):
         self.xengs = []
         chans_per_roach = self.n_chans / len(self.fpgas)
         for roach in self.fpgas:
-            self.xengs.append(XEngine(roach,'ctrl',n_ants=self.n_ants,chans=chans_per_roach,connect_passively=passive, acc_len=self.acc_len))
+            band = self.config.get(roach.host,'xeng_band')
+            self.xengs.append(XEngine(roach,'ctrl',band=band,n_ants=self.n_ants,chans=chans_per_roach,connect_passively=passive, acc_len=self.acc_len))
 
     def all_fengs(self, method, *args, **kwargs):
         """
@@ -600,7 +601,7 @@ class XEngine(Engine):
     """
     A subclass of Engine, encapsulating X-Engine specific properties
     """
-    def __init__(self,roachhost,ctrl_reg='ctrl',id=0,chans=1024,n_ants=8, acc_len=1024, connect_passively=True):
+    def __init__(self,roachhost,ctrl_reg='ctrl',id=0,band='low',chans=1024,n_ants=8, acc_len=1024, connect_passively=True):
         """
         Instantiate a new X-engine.
         roachhost: The hostname of the ROACH on which this Engine lives
@@ -617,6 +618,7 @@ class XEngine(Engine):
         self.chans=1024
         self.n_ants = n_ants
         self.acc_len = acc_len
+        self.band = band
         if not connect_passively:
             self.set_acc_len()
 
@@ -677,33 +679,49 @@ class AmiSbl(AmiDC):
             corr01
             timestamp
         """
-        xeng = self.xengs[0]
+        if str(self.output_format) == 'q':
+            array_fmt = np.int64
+        elif str(self.output_format) == 'l':
+            array_fmt = np.int32
+
+        xeng0 = self.xengs[0]
         if wait:
-            mcnt = xeng.read_int('mcnt_lsb')
+            mcnt = xeng0.read_int('mcnt_lsb')
             #sleep until there's a new correlation
-            while xeng.read_int('mcnt_lsb') == mcnt:
+            while xeng0.read_int('mcnt_lsb') == mcnt:
                 time.sleep(0.01)
-        mcnt_msb = xeng.read_uint('mcnt_msb')
-        mcnt_lsb = xeng.read_uint('mcnt_lsb')
-        mcnt = (mcnt_msb << 32) + mcnt_lsb
-        pack_format = '>%d%s'%(self.n_chans,str(self.output_format))
-        c_pack_format = '>%d%s'%(2*self.n_chans,str(self.output_format))
-        n_bytes = struct.calcsize(pack_format)
-        snap00   = np.array(struct.unpack(pack_format,xeng.read('corr00_bram',n_bytes)))
-        snap11   = np.array(struct.unpack(pack_format,xeng.read('corr11_bram',n_bytes)))
-        snap01   = np.array(struct.unpack(c_pack_format,xeng.read('corr01_bram',2*n_bytes)))
-        #snap01c   = np.array(snap01[1::2] + 1j*snap01[0::2], dtype=complex)
-        #snap00   = np.zeros(self.n_chans)
-        #snap11   = np.zeros(self.n_chans)
-        #snap01   = np.zeros(2*self.n_chans)
+
+        snap00 = np.zeros(self.n_chans*self.n_bands,dtype=array_fmt)
+        snap11 = np.zeros(self.n_chans*self.n_bands,dtype=array_fmt)
+        snap01 = np.zeros(2*self.n_chans*self.n_bands,dtype=array_fmt)
+
+        for xn,xeng in enumerate(self.xengs):
+            mcnt_msb = xeng.read_uint('mcnt_msb')
+            mcnt_lsb = xeng.read_uint('mcnt_lsb')
+            mcnt = (mcnt_msb << 32) + mcnt_lsb
+            pack_format = '>%d%s'%(self.n_chans,str(self.output_format))
+            c_pack_format = '>%d%s'%(2*self.n_chans,str(self.output_format))
+            n_bytes = struct.calcsize(pack_format)
+            if xeng.band == 'low':
+                snap00[0:self.n_chans]   = np.array(struct.unpack(pack_format,xeng.read('corr00_bram',n_bytes)))
+                snap11[0:self.n_chans]   = np.array(struct.unpack(pack_format,xeng.read('corr11_bram',n_bytes)))
+                snap01[0:2*self.n_chans]   = np.array(struct.unpack(c_pack_format,xeng.read('corr01_bram',2*n_bytes)))
+            else:
+                snap00[(self.n_bands-1)*self.n_chans:self.n_bands*self.n_chans]   = np.array(struct.unpack(pack_format,xeng.read('corr00_bram',n_bytes)))[::-1]
+                snap11[(self.n_bands-1)*self.n_chans:self.n_bands*self.n_chans]   = np.array(struct.unpack(pack_format,xeng.read('corr11_bram',n_bytes)))[::-1]
+                snap01[2*(self.n_bands-1)*self.n_chans:2*self.n_bands*self.n_chans]   = np.array(struct.unpack(c_pack_format,xeng.read('corr01_bram',2*n_bytes)))[::-1]
+            #snap01c   = np.array(snap01[1::2] + 1j*snap01[0::2], dtype=complex)
+            #snap00   = np.zeros(self.n_chans)
+            #snap11   = np.zeros(self.n_chans)
+            #snap01   = np.zeros(2*self.n_chans)
+            if mcnt_lsb != xeng.read_uint('mcnt_lsb'):
+                print mcnt_lsb, xeng.read_uint('mcnt_lsb')
+                print "SNAP CORR: mcnt changed before snap completed!"
+                return None
+
         if combine_complex:
             snap01   = np.array(snap01[0::2] + 1j*snap01[1::2], dtype=complex)
-        if mcnt_lsb != xeng.read_uint('mcnt_lsb'):
-            print mcnt_lsb, xeng.read_uint('mcnt_lsb')
-            print "SNAP CORR: mcnt changed before snap completed!"
-            return None
-        else:
-            return {'corr00':snap00,'corr11':snap11,'corr01':snap01,'timestamp':self.mcnt2time(mcnt)}
+        return {'corr00':snap00,'corr11':snap11,'corr01':snap01,'timestamp':self.mcnt2time(mcnt)}
     def mcnt2time(self,mcnt):
         """
         Convert an mcnt to a UTC time based on the instance's sync_time attribute.
