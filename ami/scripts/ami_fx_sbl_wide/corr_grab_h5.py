@@ -77,7 +77,7 @@ if __name__ == '__main__':
 
     # some initial values for the loop
     cnt=0
-    datavec = np.zeros([corr.n_chans,corr.n_bls,corr.n_pols,2],dtype=np.int64)
+    datavec = np.zeros([corr.n_chans*corr.n_bands,corr.n_bls,corr.n_pols,2],dtype=np.int64)
     current_obs = None
     mcnt_old = xeng.read_uint('mcnt_lsb')
     receiver_enable = False
@@ -125,7 +125,7 @@ if __name__ == '__main__':
                     print "got new correlator data with timestamp",d['timestamp']
                     maxd = np.max(np.abs(d['corr01']))
                     if scale is None:
-                        scale = 2.**31 / np.mean(np.abs(d['corr01'])) / 1000.
+                        scale = 2.**31 / np.mean(np.abs(d['corr01'])) / 20000.
 
                     print "max data value is %d (%f bits) (scaled by %f)"%(np.round(maxd*scale,0),np.log2(maxd*scale),scale)
                     txdata = d['corr01']*scale

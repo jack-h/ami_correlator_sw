@@ -25,7 +25,7 @@ class AmiControlInterface(object):
         self.parse_config_file()
         self.bind_sockets()
         self.meta_data = AmiMetaData(n_ants=self.n_ants,n_agcs=self.n_agcs)
-        self.data = DataStruct(n_chans=self.n_chans)
+        self.data = DataStruct(n_chans=self.n_chans*self.n_bands)
 
     def __del__(self):
         try:
@@ -45,6 +45,7 @@ class AmiControlInterface(object):
         self.n_ants      = self.config.getint('control_interface','n_ants')
         self.n_agcs      = self.config.getint('control_interface','n_agcs')
         self.n_chans     = self.config.getint('correlator_hard','n_chans')
+        self.n_bands     = self.config.getint('correlator_hard','n_bands')
     def bind_sockets(self):
         """
         Bind the sockets to the data and metadata server

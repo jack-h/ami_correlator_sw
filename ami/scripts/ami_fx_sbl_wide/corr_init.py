@@ -72,20 +72,27 @@ if __name__ == '__main__':
             adc = feng.snap('snapshot_adc', man_trig=True, format='b')
             pylab.subplot(n_plots,1,fn)
             pylab.plot(adc)
+            pylab.title('ADC values: ROACH %s, ADC %d, (ANT %d, BAND %s)'%(feng.roachhost.host,feng.adc,feng.ant,feng.band))
 
         # some non-general code to snap from the X-engine
         print 'Snapping data...'
         d = corr.snap_corr()
 
+        print 'Plotting data...'
+
         pylab.figure()
         pylab.subplot(4,1,1)
-        pylab.plot(corr.fengs[0].gen_freq_scale(),helpers.dbs(d['corr00']))
+        #pylab.plot(corr.fengs[0].gen_freq_scale(),helpers.dbs(d['corr00']))
+        pylab.plot(helpers.dbs(d['corr00']))
         pylab.subplot(4,1,2)
-        pylab.plot(corr.fengs[0].gen_freq_scale(),helpers.dbs(d['corr11']))
+        #pylab.plot(corr.fengs[0].gen_freq_scale(),helpers.dbs(d['corr11']))
+        pylab.plot(helpers.dbs(d['corr11']))
         pylab.subplot(4,1,3)
-        pylab.plot(corr.fengs[0].gen_freq_scale(),helpers.dbs(np.abs(d['corr01'])))
+        #pylab.plot(corr.fengs[0].gen_freq_scale(),helpers.dbs(np.abs(d['corr01'])))
+        pylab.plot(helpers.dbs(np.abs(d['corr01'])))
         pylab.subplot(4,1,4)
-        pylab.plot(corr.fengs[0].gen_freq_scale(),np.unwrap(np.angle(d['corr01'])))
+        #pylab.plot(corr.fengs[0].gen_freq_scale(),np.unwrap(np.angle(d['corr01'])))
+        pylab.plot(np.unwrap(np.angle(d['corr01'])))
         pylab.show()
 
 

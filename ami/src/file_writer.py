@@ -39,14 +39,17 @@ class H5Writer(object):
         self.acc_len = self.config.getint('correlator','acc_len')
         self.data_path = self.config.get('correlator','data_path')
         self.roaches = self.config['hardware'].get('roaches').split(',')
+        self.bands = [self.config.get(roach,'xeng_band') for roach in self.roaches]
         self.adc_clk = self.config.getint('hardware','adc_clk')
         self.lo_freq = self.config.getint('hardware','mix_freq')
         self.n_bls = (self.n_ants * (self.n_ants+1))/2
-        if self.band == 'low':
+        if self.n_bands == 2:
+            self.center_freq = self.lo_freq
+        elif self.bands[0] == 'low':
             self.center_freq = self.lo_freq - self.adc_clk/4.
-        elif self.band == 'high':
+        elif self.bands[1] == 'high':
             self.center_freq = self.lo_freq + self.adc_clk/4.
-        self.bandwidth = self.adc_clk/2.
+        self.bandwidth = self.adc_clk/2. * self.n_bands
         #shortcuts to sections
         self.c_testing = self.config['testing']
         self.c_correlator = self.config['correlator']
@@ -85,7 +88,7 @@ class H5Writer(object):
             center_freq
             bandwidth
         """
-        self.fh.attrs['n_chans'] = self.n_chans
+        self.fh.attrs['n_chans'] = self.n_chans*self.n_bands
         self.fh.attrs['n_pols'] = self.n_pols
         self.fh.attrs['n_bls'] = self.n_bls
         self.fh.attrs['n_ants'] = self.n_ants
