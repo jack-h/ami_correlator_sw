@@ -52,6 +52,11 @@ class H5Writer(object):
         self.c_correlator = self.config['correlator']
         self.c_correlator_hard = self.config['correlator_hard']
         self.c_hardware= self.config['hardware']
+        ##array configuration
+        #self.array_cfile = self.config.get('array','array_layout')
+        #self.array_config = configparser.SafeConfigParser()
+        #self.array_config.read(self.array_cfile)
+
     def start_new_file(self,name):
         """
         Close the current file if necessary, and start a new one with the provided name.
@@ -107,7 +112,7 @@ class H5Writer(object):
         dtype: data type
         """
         if name not in self.datasets.keys():
-            self.add_new_dataset(name,shape,data,dtype)
+            self.add_new_dataset(name,shape,dtype)
         else:
             self.fh[name].resize(self.datasets_index[name]+1,axis=0)
         self.fh[name][self.datasets_index[name]] = data
