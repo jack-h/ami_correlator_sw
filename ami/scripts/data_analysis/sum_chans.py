@@ -14,6 +14,8 @@ if __name__ == '__main__':
         help='Drop channels before this channel, start collapse here')
     o.add_option('-e', '--end', dest='end', default=None,
         help='Drop channels after this channel, end collapse here')
+    o.add_option('--ps', dest='ps', type='float', default=None,
+        help='Phase shift by specified number of nanoseconds')
     opts, args = o.parse_args(sys.argv[1:])
     if args==[]:
         print 'Please specify a hdf5 file! \nExiting.'
@@ -34,6 +36,30 @@ def append_history(fh,hist_str):
         if type(hv) == n.ndarray: new_hist=n.append(hv,n.array([hist_str]))
         else: new_hist=n.array([[hv],[hist_str]])
         rv = fh.create_dataset('history', data=new_hist)
+
+def get_freq_range(fh,delay=False):
+    """return array of frequency channel bin center values"""
+    cf = fh.attrs.get('center_freq')
+    n_chans = fh.attrs.get('n_chans')
+    bw = fh.attrs.get('bandwidth')
+    start_freq = cf - (bw/2)
+    bin_width = bw/float(n_chans)
+    freq_range = n.arange(start_freq,start_freq+bw,bw/n_chans)
+    delay_max = 1./(2*bin_width)*1e3 # in nanoseconds
+    delay_range = n.arange(-delay_max,delay_max,2*delay_max/n_chans)
+    funit = 'MHz'
+    dunit = 'ns'
+    if delay:
+        return 'Delay',dunit,delay_range
+    else:
+        return 'Frequency',funit,freq_range
+
+def gen_phase_shift(freqs,offset):
+    """
+    phase shift a signal at freq 'freqs' (MHz) by time offset nanosecs
+    """
+    w = 2*n.pi*freqs * 1e6 #Convert MHz -> Hz
+    return n.exp(1j*w*offset*1e-9) #delay in ns
 
 def sum_chan(cm,dec):
     nts=cm.shape[0]
@@ -65,7 +91,7 @@ for fni in args:
     #copy datasets/groups except timestamps0 and xeng_raw0
     for item in fhi.iteritems():
         if item[0] == 'xeng_raw0':
-            cm=fhi.get(item[0]) 
+            cm=fhi.get(item[0]).value
             #complexify
             if len(cm.shape) == 5:
                 print "complexifying input data"
@@ -87,6 +113,14 @@ for fni in args:
     #ignore the last channels to get an integer number of channels
     n_ch-=n_ch%decimate
     ch_end=n_ch+ch_start
+
+    #phase rotate channels
+    if opts.ps is not None:
+        faxis_name, faxis_unit, freqs = get_freq_range(fhi,delay=False)
+        phase_delays = gen_phase_shift(freqs,opts.ps)
+        for freqn, freq in enumerate(freqs):
+            cm[:,freqn,:,:] = cm[:,freqn,:,:] * phase_delays[freqn]
+
     
     #sum channels
     dec_cm=sum_chan(cm[:,ch_start:ch_end],decimate)
