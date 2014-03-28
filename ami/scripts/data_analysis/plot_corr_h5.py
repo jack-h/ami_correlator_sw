@@ -50,6 +50,8 @@ if __name__ == '__main__':
         help='Share plots in a single frame.')
     o.add_option('-D', '--delay', dest='delay', action='store_true',
         help='Take FFT of frequency axis to go to delay (t) space.')
+    o.add_option('--ps', dest='ps', type='float', default=None,
+        help='Phase shift by specified number of nanoseconds')
     o.add_option('-F', '--fringe', dest='fringe', action='store_true',
         help='Take FFT of time axis to go to fringe (Hz) space.')
     o.add_option('-S', '--swapri', dest='swapri', action='store_true',
@@ -212,6 +214,14 @@ def gen_ha_axis(timestamps,scale,offset,RA):
         scale = 'Hour Angle'
     return {'times':ha, 'scale':scale, 'ref':RA, 'gmtref':gmt_ref, 'jd_ref':jd_ref, 'unit':''}
 
+def gen_phase_shift(freqs,offset):
+    """
+    phase shift a signal at freq 'freqs' (MHz) by time offset nanosecs
+    """
+    w = 2*numpy.pi*freqs * 1e6 #Convert MHz -> Hz
+    return numpy.exp(1j*w*offset*1e-9) #delay in ns
+
+
 
 bl_order=None
 decimate=int(opts.decimate)
@@ -241,6 +251,9 @@ for fi, fname in enumerate(fnames):
             obs = gen_obs(telescope=telescope)
         # get the frequency axis
         axis_name, freq_unit, freq_range = get_freq_range(fh,delay=opts.delay)
+        if opts.ps is not None:
+            faxis_name, faxis_unit, freqs = get_freq_range(fh,delay=False)
+            phase_delays = gen_phase_shift(freqs,opts.ps)
         if 'pol' in fh.keys() and opts.pol.startswith('all'):
             unique_pols = list(numpy.unique(fh['pol']))
             pols = []
@@ -324,6 +337,9 @@ for cnt,bl in enumerate(bl_index):
             di = numpy.array(d[:,:,cnt,pi,1] + d[:,:,cnt,pi,0]*1j, dtype=numpy.complex64)
         else:
             di = d[:,:,cnt,pi]
+        if opts.ps is not None:
+            for freqn, freq in enumerate(freqs):
+                di[:,freqn] *= phase_delays[freqn]
         if opts.swapri:
             di = numpy.imag(di) + 1j*numpy.real(di)
         if flags != None:
