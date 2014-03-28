@@ -82,7 +82,7 @@ for fni in args:
     #complexify
     if len(cm.shape) == 5:
         print "complexifying input data"
-        cm = np.array(cm[:,:,:,:,1] + 1j*cm[:,:,:,:,0],dtype=np.complex64)
+        cm = np.array(cm[:,:,:,:,1] + 1j*cm[:,:,:,:,0],dtype=np.complex128)
 
     #swap r/i
     if opts.swapri:
