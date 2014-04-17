@@ -710,6 +710,7 @@ class AmiSbl(AmiDC):
                 snap00[(self.n_bands-1)*self.n_chans:self.n_bands*self.n_chans]   = np.array(struct.unpack(pack_format,xeng.read('corr00_bram',n_bytes)))[::-1]
                 snap11[(self.n_bands-1)*self.n_chans:self.n_bands*self.n_chans]   = np.array(struct.unpack(pack_format,xeng.read('corr11_bram',n_bytes)))[::-1]
                 temp   = np.array(struct.unpack(c_pack_format,xeng.read('corr01_bram',2*n_bytes)))
+                temp_flipped = np.zeros_like(temp)
                 temp_flipped[0::2] = temp[-2::2]
                 temp_flipped[1::2] = temp[-1::2]
                 snap01[2*(self.n_bands-1)*self.n_chans:2*self.n_bands*self.n_chans]   = temp_flipped
