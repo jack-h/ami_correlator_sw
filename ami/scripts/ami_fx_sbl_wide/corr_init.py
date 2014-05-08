@@ -45,13 +45,13 @@ if __name__ == '__main__':
     corr = AMI.AmiSbl(config_file=config_file, verbose=True, passive=opts.skip_prog)
     time.sleep(0.1)
 
-    COARSE_DELAY = 0
+    COARSE_DELAY = 16*10
     corr.all_fengs('phase_switch_enable',opts.phase_switch)
     corr.all_fengs('set_fft_shift',corr.c_correlator.getint('fft_shift'))
-    #corr.all_fengs('set_coarse_delay',COARSE_DELAY)
+    corr.all_fengs('set_coarse_delay',COARSE_DELAY)
 
-    corr.fengs[0].set_coarse_delay(COARSE_DELAY)
-    corr.fengs[1].set_coarse_delay(COARSE_DELAY)
+    #corr.fengs[0].set_coarse_delay(COARSE_DELAY)
+    #corr.fengs[1].set_coarse_delay(COARSE_DELAY+100)
     corr.all_fengs('tvg_en',corner_turn=opts.tvg)
     corr.all_xengs('set_acc_len')
     if not opts.skip_arm:
