@@ -5,9 +5,20 @@ import time
 import struct
 import sys
 import pylab
+from optparse import OptionParser
 
-ROACH = 'alice'
-ADC=1
+p = OptionParser()
+p.set_usage('%prog [options] [CONFIG_FILE]')
+p.set_description(__doc__)
+p.add_option('-r', '--roach', dest='roach',type='string', default='alice', 
+    help='roach. Default: alice')
+p.add_option('-z', '--zdok', dest='zdok',type='int', default=0, 
+    help='zdok. Default: 0')
+
+opts, args = p.parse_args(sys.argv[1:])
+
+ROACH = opts.roach
+ADC=opts.zdok
 
 def graycode(n):
     if n==1:
