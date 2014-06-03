@@ -45,6 +45,8 @@ if __name__ == '__main__':
     p.set_description(__doc__)
     p.add_option('-t', '--test_tx', dest='test_tx',action='store_true', default=False, 
         help='Send tx test patterns, and don\'t bother writing data to file')
+    p.add_option('-a', '--autodiv', dest='autodiv',action='store_true', default=False, 
+        help='Divide cross correlation data by autocorrelations: sqrt(A**2)sqrt(B**2)') 
 
     opts, args = p.parse_args(sys.argv[1:])
 
@@ -124,11 +126,28 @@ if __name__ == '__main__':
                     datavec[:,2,0,0] = d['corr01'][1::2] #datavec[:,:,:,0] should be imag
                     print "got new correlator data with timestamp",d['timestamp']
                     maxd = np.max(np.abs(d['corr01']))
+                    txdata = np.array(d['corr01'],dtype=float) #float, because it will be scaled later
+                    if opts.autodiv:
+                        #compute the factor to divide by
+                        #if you don't explictly convert to float before multiplication, bad things happen!
+                        divfactor = np.sqrt(np.array(d['corr00'],dtype=float)*np.array(d['corr11'],dtype=float))
+                        for i in range(corr.n_chans*corr.n_bands):
+                            txdata[2*i:2*i+1] = txdata[2*i:2*i+1]/divfactor[i] #divide both real and imag parts (very clunky)
+
+                    # scale txdata so it fits in 32 bits
                     if scale is None:
-                        scale = 2.**31 / np.mean(np.abs(d['corr01'])) / 20000.
+                        scale = 2.**31 / np.mean(np.abs(txdata)) / 20000.
+
+                    txdata *= scale
+                    #plotdata=np.zeros(corr.n_chans*corr.n_bands,dtype=float)
+                    #for i in range(corr.n_chans*corr.n_bands):
+                    #    plotdata[i] = np.sqrt(txdata[2*i]**2 + txdata[2*i+1]**2)
+                    #pylab.plot(10*np.log10(plotdata/2**31))
+                    ##pylab.plot(divfactor)
+                    #pylab.show()
+                    #exit()
 
                     print "max data value is %d (%f bits) (scaled by %f)"%(np.round(maxd*scale,0),np.log2(maxd*scale),scale)
-                    txdata = d['corr01']*scale
                     #saturate
                     txdata[txdata>(2**31-1)] = 2**31 - 1
                     txdata[txdata<-(2**31)] = -(2**31)
