@@ -1,130 +1,99 @@
+import sys
+import time
 import numpy as np
 import adc5g as adc
-import corr
-import time
-import sys
-import struct
 import pylab
-
-def snap(r,name,format='L',man_trig=True):
-    n_bytes = struct.calcsize('=%s'%format)
-    d = r.snapshot_get(name, man_trig=man_trig)
-    return np.array(struct.unpack('>%d%s'%(d['length']/n_bytes,format),d['data']))
-
-def uint2int(d,bits,bp):
-    dout = np.array(d,dtype=float)
-    dout[dout>(2**(bits-1))] -= 2**bits
-    dout /= 2**bp
-    return dout
-
+import socket
+import ami.ami as AMI
+import ami.helpers as helpers
+import struct
 
 if __name__ == '__main__':
     from optparse import OptionParser
 
     p = OptionParser()
-    p.set_usage('%prog [options]')
+    p.set_usage('%prog [options] [CONFIG_FILE]')
     p.set_description(__doc__)
-    p.add_option('-p', '--skip_prog', dest='prog_fpga',action='store_false', default=True, 
+    p.add_option('-p', '--skip_prog', dest='skip_prog',action='store_true', default=False, 
         help='Skip FPGA programming (assumes already programmed).  Default: program the FPGAs')
-    #p.add_option('-e', '--skip_eq', dest='prog_eq',action='store_false', default=True, 
-    #    help='Skip configuration of the equaliser in the F engines.  Default: set the EQ according to config file.')
+    p.add_option('-s', '--skip_phase_switch', dest='phase_switch',action='store_false', default=True, 
+        help='Use this switch to disable phase switching')
+    p.add_option('-a', '--skip_arm', dest='skip_arm',action='store_true', default=False, 
+        help='Use this switch to disable sync arm')
+    p.add_option('-l', '--passive', dest='passive',action='store_true', default=False, 
+        help='Use this flag to connect to the roaches without reconfiguring them')
     p.add_option('-v', '--verbosity', dest='verbosity',type='int', default=0, 
         help='Verbosity level. Default: 0')
-    p.add_option('-r', '--roach', dest='roach',type='str', default='192.168.0.111', 
-        help='ROACH IP address or hostname. Default: 192.168.0.111')
-    p.add_option('-b', '--boffile', dest='boffile',type='str', default='ami_fx_sbl.bof', 
-        help='Boffile to program. Default: ami_fx_sbl.bof')
-    p.add_option('-a', '--acc_len', dest='acc_len',type='int', default='100000', 
-        help='Number of spectra to accumulate. Default: 1024')
-    p.add_option('-f', '--fft_shift', dest='fft_shift',type='str', default='111111111111', 
-        help='FFT shift schedule. Enter as a 12-bit binary string. Default: 111111111111 (i.e. shift every stage)')
+    p.add_option('-t', '--tvg', dest='tvg',action='store_true', default=False, 
+        help='Use corner turn tvg. Default:False')
     p.add_option('-m', '--manual_sync', dest='manual_sync',action='store_true', default=False, 
         help='Use this flag to issue a manual sync (useful when no PPS is connected). Default: Do not issue sync')
+    p.add_option('-P', '--plot', dest='plot',action='store_true', default=False, 
+        help='Plot adc and spectra values')
 
     opts, args = p.parse_args(sys.argv[1:])
 
-    print 'Connecting to %s'%opts.roach
-    r = corr.katcp_wrapper.FpgaClient(opts.roach)
-    time.sleep(0.2)
-    print 'ROACH is connected?', r.is_connected()
+    if args == []:
+        config_file = None
+    else:
+        config_file = args[0]
 
-    if opts.prog_fpga:
-        print 'Programming ROACH with boffile %s'%opts.boffile
-        r.progdev(opts.boffile)
-        time.sleep(0.5)
-        print 'Estimating clock speed...'
-        print 'Clock speed is %d MHz'%r.est_brd_clk()
-        print 'Calibrating ADCs'
-        adc.calibrate_all_delays(r,0,snaps=['snapshot_adc0'],verbosity=opts.verbosity)
-        adc.calibrate_all_delays(r,1,snaps=['snapshot_adc1'],verbosity=opts.verbosity)
-        #adc.sync_adc(r)
+    # construct the correlator object, which will parse the config file and try and connect to
+    # the roaches
+    # If passive is True, the connections will be made without modifying
+    # control software. Otherwise, the connections will be made, the roaches will be programmed and control software will be reset to 0.
+    corr = AMI.AmiSbl(config_file=config_file, verbose=True, passive=opts.skip_prog)
+    time.sleep(0.1)
+
+    COARSE_DELAY = 16*10
+    corr.all_fengs('phase_switch_enable',opts.phase_switch)
+    corr.all_fengs('set_fft_shift',corr.c_correlator.getint('fft_shift'))
+    corr.all_fengs('set_coarse_delay',COARSE_DELAY)
+
+    #corr.fengs[0].set_coarse_delay(COARSE_DELAY)
+    #corr.fengs[1].set_coarse_delay(COARSE_DELAY+100)
+    corr.all_fengs('tvg_en',corner_turn=opts.tvg)
+    corr.all_xengs('set_acc_len')
+    if not opts.skip_arm:
+        print "Arming sync generators"
+        print "Sending manual sync?",opts.manual_sync
+        corr.arm_sync(send_sync=opts.manual_sync)
+
+    # Reset status flags, wait a second and print some status messages
+    corr.all_fengs('clr_status')
+    time.sleep(1)
+    corr.all_fengs('print_status')
     
-    print 'Setting accumulation length to %d'%opts.acc_len
-    r.write_int('acc_len',opts.acc_len)
+    if opts.plot:
+        # snap some data
+        pylab.figure()
+        n_plots = len(corr.fengs)
+        for fn,feng in enumerate(corr.fengs):
+            adc = feng.snap('snapshot_adc', man_trig=True, format='b')
+            pylab.subplot(n_plots,1,fn)
+            pylab.plot(adc)
+            pylab.title('ADC values: ROACH %s, ADC %d, (ANT %d, BAND %s)'%(feng.roachhost.host,feng.adc,feng.ant,feng.band))
 
-    #print 'Setting fft-shift to %s'%opts.fft_shift
-    #r.write_int('fft_shift0',int(opts.fft_shift,2))
-    #r.write_int('fft_shift1',int(opts.fft_shift,2))
-    fft_shift=-1
-    print 'Setting fft-shift to %s'%fft_shift
-    r.write_int('fft_shift0',fft_shift)
-    r.write_int('fft_shift1',fft_shift)
+        # some non-general code to snap from the X-engine
+        print 'Snapping data...'
+        d = corr.snap_corr()
 
-    COARSE_DELAY=1024
-    print 'Setting coarse delays to %d'%COARSE_DELAY
-    r.write_int('coarse_delay0',COARSE_DELAY)
-    r.write_int('coarse_delay1',COARSE_DELAY)
+        print 'Plotting data...'
 
-    print 'Arming pps'
-    ctrl = r.read_uint('control')
-    ctrl = ctrl | (1<<2)
-    r.write_int('control',ctrl)
-    ctrl = ctrl & ((2**32-1)-(1<<2))
-    r.write_int('control',ctrl)
-
-    if opts.manual_sync:
-        print 'Issuing manual sync'
-        for i in range(2): #After a reset, the first sync is ignored, so send two
-            ctrl = r.read_uint('control')
-            ctrl = ctrl | (1<<1)
-            r.write_int('control',ctrl)
-            ctrl = ctrl & ((2**32-1)-(1<<1))
-            r.write_int('control',ctrl)
-
-    print 'Snapping adc 0'
-    snap_adc0 = r.snapshot_get('snapshot_adc0',man_trig=True)
-    d_adc0 = struct.unpack('>%db'%snap_adc0['length'], snap_adc0['data'])
-    print 'Snapping adc 1'
-    snap_adc1 = r.snapshot_get('snapshot_adc1',man_trig=True)
-    d_adc1 = struct.unpack('>%db'%snap_adc1['length'], snap_adc1['data'])
-    pylab.figure()
-    pylab.subplot(2,1,1)
-    pylab.plot(d_adc0)
-    pylab.subplot(2,1,2)
-    pylab.plot(d_adc1)
-    
-    print 'Snapping 00...'
-    snap00 = r.snapshot_get('corr00',wait_period=10)
-    d00 = struct.unpack('>%dq'%(snap00['length']/8),snap00['data'])
-    print 'Snapping 11...'
-    snap11 = r.snapshot_get('corr11',wait_period=10)
-    d11 = struct.unpack('>%dq'%(snap11['length']/8),snap11['data'])
-    print 'Snapping 01 real ...'
-    snap01_r = r.snapshot_get('corr01_r',wait_period=10)
-    d01_r = struct.unpack('>%dq'%(snap01_r['length']/8),snap01_r['data'])
-    print 'Snapping 01 imag...'
-    snap01_i = r.snapshot_get('corr01_i',wait_period=10)
-    d01_i = struct.unpack('>%dq'%(snap01_i['length']/8),snap01_i['data'])
-
-    pylab.figure()
-    pylab.subplot(3,1,1)
-    pylab.plot(d00)
-    pylab.subplot(3,1,2)
-    pylab.plot(d11)
-    pylab.subplot(3,1,3)
-    pylab.plot(d01_r)
-    pylab.plot(d01_i)
-    pylab.show()
+        pylab.figure()
+        pylab.subplot(4,1,1)
+        #pylab.plot(corr.fengs[0].gen_freq_scale(),helpers.dbs(d['corr00']))
+        pylab.plot(helpers.dbs(d['corr00']))
+        pylab.subplot(4,1,2)
+        #pylab.plot(corr.fengs[0].gen_freq_scale(),helpers.dbs(d['corr11']))
+        pylab.plot(helpers.dbs(d['corr11']))
+        pylab.subplot(4,1,3)
+        #pylab.plot(corr.fengs[0].gen_freq_scale(),helpers.dbs(np.abs(d['corr01'])))
+        pylab.plot(helpers.dbs(np.abs(d['corr01'])))
+        pylab.subplot(4,1,4)
+        #pylab.plot(corr.fengs[0].gen_freq_scale(),np.unwrap(np.angle(d['corr01'])))
+        pylab.plot(np.unwrap(np.angle(d['corr01'])))
+        pylab.show()
 
 
 
