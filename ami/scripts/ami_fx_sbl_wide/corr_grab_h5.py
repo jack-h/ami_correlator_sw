@@ -132,7 +132,7 @@ if __name__ == '__main__':
                         #if you don't explictly convert to float before multiplication, bad things happen!
                         divfactor = np.sqrt(np.array(d['corr00'],dtype=float)*np.array(d['corr11'],dtype=float))
                         for i in range(corr.n_chans*corr.n_bands):
-                            txdata[2*i:2*i+1] = txdata[2*i:2*i+1]/divfactor[i] #divide both real and imag parts (very clunky)
+                            txdata[2*i:2*i+2] = txdata[2*i:2*i+2]/divfactor[i] #divide both real and imag parts (very clunky)
 
                     # scale txdata so it fits in 32 bits
                     if scale is None:
