@@ -165,6 +165,6 @@ if __name__ == '__main__':
                     else:
                         fake_data = np.arange(4096)+cnt
                         ctrl.try_send(d['timestamp'],1,cnt,fake_data)
-                else:
+                else: #corrr.snap_corr returns None in the event of an overrun error
                     print "Failed to send because MCNT changed during snap"
-        time.sleep(0.1)
+        time.sleep(0.05)
