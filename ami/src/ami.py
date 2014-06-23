@@ -587,11 +587,11 @@ class FEngine(Engine):
                 print colored('%15s : %r'%(key,vals[key]), 'red', attrs=['bold'])
 
 
-    def calibrate_adc(self,verbosity=1):
+    def calibrate_adc(self,verbosity=2):
         """
         Calibrate the ADC associated with this engine, using the adc5g.calibrate_mmcm_phase method.
         """
-        adc.calibrate_all_delays(self.roachhost,self.adc,snaps=[self.expand_name('snapshot_adc')],verbosity=2)
+        adc.calibrate_all_delays(self.roachhost,self.adc,snaps=[self.expand_name('snapshot_adc')],verbosity=verbosity)
         #opt,glitches =  adc.calibrate_mmcm_phase(self.roachhost,self.adc,[self.expand_name('snapshot_adc')])
         #print opt
         #print glitches
