@@ -61,7 +61,7 @@ if __name__ == '__main__':
 
     # Reset status flags, wait a second and print some status messages
     corr.all_fengs('clr_status')
-    time.sleep(1)
+    time.sleep(2)
     corr.all_fengs('print_status')
     
     if opts.plot:
