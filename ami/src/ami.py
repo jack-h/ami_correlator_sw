@@ -469,6 +469,8 @@ class FEngine(Engine):
         else:
             raise ValueError('FEngine Error: band can only have values "low" or "high"')
         Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng_', reg_suffix=str(self.adc), connect_passively=connect_passively)
+        # set the default noise seed
+        self.set_adc_noise_tvg_seed()
 
     def set_fft_shift(self,shift):
         """
@@ -552,6 +554,12 @@ class FEngine(Engine):
         self.set_ctrl_sw_bits(19,19,int(fd_fs))
         self.set_ctrl_sw_bits(20,20,int(adc))
         self.ctrl_sw_edge(16)
+    def set_adc_noise_tvg_seed(self, seed=0xdeadbeef):
+        """
+        Set the seed for the adc test vector generator.
+        Default is 0xdeadbeef.
+        """
+        self.write_int('noise_seed', seed)
     def phase_switch_enable(self,val):
         """
         Set the phase switch enable state to bool(val)
