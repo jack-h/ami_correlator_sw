@@ -157,7 +157,9 @@ if __name__ == '__main__':
                     #    print "Sending data. Index %4d, %d"%(datan,data)
 
                     if not opts.test_tx:
+                        #ctrl.try_send(time.time(),1,cnt,txdata)
                         ctrl.try_send(d['timestamp'],1,cnt,txdata)
+                        #write_data(writer,datavec,time.time(),ctrl.meta_data)
                         write_data(writer,datavec,d['timestamp'],ctrl.meta_data)
                         #pylab.plot(helpers.dbs(np.abs(txdata)))
                         #pylab.show()
