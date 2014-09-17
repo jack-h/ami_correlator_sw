@@ -82,29 +82,32 @@ if __name__ == '__main__':
                 print '%d: Snapping data from ANT: %d, BAND: %s'%(n,feng.ant,feng.band)
                 dlo = feng.snap('fft_low_snap',format='Q')[0:vec_width/2]/(2.**34) # normalise to 1 (data is 18_17 the converted to power, UFix36_34)
                 dhi = feng.snap('fft_high_snap',format='Q')[0:vec_width/2]/(2.**34)
+                print 'done'
                 #  This weird assignment is a firmware mess up. fix it
                 d[0:vec_width:4] += dlo[0::2]
                 d[1:vec_width:4] += dlo[1::2]
                 d[2:vec_width:4] += dhi[0::2]
                 d[3:vec_width:4] += dhi[1::2]
             d /= 1024. #there is an inherent accumulation of 1024 spectra on the FPGA
-            pylab.figure(1)
-            pylab.plot(dbs(d/opts.samples),label='ANT %d, BAND %s'%(feng.ant,feng.band))
-            pylab.legend()
-            pylab.title("Autocorrelation Passbands")
-            pylab.ylabel("Power (db)")
-            pylab.xlabel("Decimated Channel Number")
+            if opts.plot:
+                pylab.figure(1)
+                pylab.plot(dbs(d/opts.samples),label='ANT %d, BAND %s'%(feng.ant,feng.band))
+                pylab.legend()
+                pylab.title("Autocorrelation Passbands")
+                pylab.ylabel("Power (db)")
+                pylab.xlabel("Decimated Channel Number")
 
             # calculate target mean power, scaled for 4 bits
             mean_power = d / opts.samples
             eq = (np.sqrt(1./mean_power)) * opts.targetpower
             eq[eq>np.mean(eq)*opts.cutoff] = 0
-            pylab.figure(2)
-            pylab.plot(eq,label='ANT %d, BAND %s'%(feng.ant,feng.band))
-            pylab.title("EQ coefficients")
-            pylab.ylabel("Amplitude (linear)")
-            pylab.xlabel("Decimated Channel Number")
-            pylab.legend()
+            if opts.plot:
+                pylab.figure(2)
+                pylab.plot(eq,label='ANT %d, BAND %s'%(feng.ant,feng.band))
+                pylab.title("EQ coefficients")
+                pylab.ylabel("Amplitude (linear)")
+                pylab.xlabel("Decimated Channel Number")
+                pylab.legend()
             # save eq in a dictionary ready for pickling
             coeffs['ANT%d_%s'%(feng.ant,feng.band)] = eq
 
@@ -123,12 +126,18 @@ if __name__ == '__main__':
 
         print "Grabbing snapshot of quantized signal for Antenna %d %s band"%(feng.ant,feng.band)
         quant = uint2int(feng.snap('quant_snap',format='B',wait_period=3),4,3,complex=True)[0:corr.n_chans]
-        pylab.figure(4)
-        pylab.plot(np.imag(quant),label='ANT %d, BAND %s'%(feng.ant,feng.band))
-        pylab.title("Quantized signal (real part) (normalised to 1)")
-        pylab.ylabel("Amplitude (linear)")
-        pylab.xlabel("Channel Number")
-        pylab.legend()
+        print 'done'
+        dev = np.std(np.abs(quant))
+        levelwidth = 2**-3
+        print 'level width = %.3f, standard deviation of amplitude: %.3f' %(levelwidth, dev)
+        print 'E = %.3f x dev:' %(levelwidth/dev)
+        if opts.plot:
+            pylab.figure(4)
+            pylab.plot(np.imag(quant),label='ANT %d, BAND %s'%(feng.ant,feng.band))
+            pylab.title("Quantized signal (real part) (normalised to 1)")
+            pylab.ylabel("Amplitude (linear)")
+            pylab.xlabel("Channel Number")
+            pylab.legend()
 
 
     # save new coeffs if there are some
