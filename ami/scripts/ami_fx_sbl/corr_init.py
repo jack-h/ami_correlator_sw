@@ -16,8 +16,8 @@ if __name__ == '__main__':
     p.set_description(__doc__)
     p.add_option('-p', '--skip_prog', dest='skip_prog',action='store_true', default=False, 
         help='Skip FPGA programming (assumes already programmed).  Default: program the FPGAs')
-    p.add_option('-s', '--skip_phase_switch', dest='phase_switch',action='store_false', default=True, 
-        help='Use this switch to disable phase switching')
+    p.add_option('-s', '--set_phase_switch', dest='phase_switch', type='int', default=-1, 
+        help='override the phase switch settings from the config file with this boolean value. 1 for enable, 0 for disable.')
     p.add_option('-a', '--skip_arm', dest='skip_arm',action='store_true', default=False, 
         help='Use this switch to disable sync arm')
     p.add_option('-l', '--passive', dest='passive',action='store_true', default=False, 
@@ -46,7 +46,12 @@ if __name__ == '__main__':
     time.sleep(0.1)
 
     COARSE_DELAY = 16*10
-    corr.all_fengs('phase_switch_enable',opts.phase_switch)
+    if opts.phase_switch == -1:
+        #don't override
+        corr.set_phase_switches(override=None)
+    else:
+        corr.set_phase_switches(override=bool(opts.phase_switch))
+
     corr.all_fengs('set_fft_shift',corr.c_correlator.getint('fft_shift'))
     corr.all_fengs('set_coarse_delay',COARSE_DELAY)
 

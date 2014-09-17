@@ -146,7 +146,8 @@ class AmiDC(object):
             for adc in range(self.n_inputs):
                 ant  = int(self.config.get(roach.host,'ant').split(',')[adc])
                 band = self.config.get(roach.host,'band').split(',')[adc]
-                self.fengs.append(FEngine(roach,adc,ant,band,adc_clk=self.adc_clk,lo_freq=self.lo_freq,n_chans=self.n_chans,connect_passively=passive))
+                phase_switch = self.config.get(roach.host,'phase_switch').split(',')[adc].strip(' ') == 'True'
+                self.fengs.append(FEngine(roach,adc,ant,band,adc_clk=self.adc_clk,lo_freq=self.lo_freq,n_chans=self.n_chans,phase_switch=phase_switch,connect_passively=passive))
 
     def initialise_x_engines(self,passive=False):
         """
@@ -443,7 +444,7 @@ class FEngine(Engine):
     """
     A subclass of Engine, encapsulating F-Engine specific properties.
     """
-    def __init__(self,roachhost,adc,ant,band,n_chans=1024,adc_clk=4000.,lo_freq=0.,ctrl_reg='ctrl',connect_passively=True):
+    def __init__(self,roachhost,adc,ant,band,n_chans=1024,adc_clk=4000.,lo_freq=0.,ctrl_reg='ctrl',phase_switch=True,connect_passively=True):
         """
         Instantiate an F-Engine.
         adc: An integer, refering to the ADC (ZDOK) number associated with this engine.
@@ -462,6 +463,7 @@ class FEngine(Engine):
         self.ant = ant
         self.band = band
         self.n_chans = n_chans
+        self.phase_switch = phase_switch
         if self.band == 'low':
             self.inv_band = True
         elif self.band == 'high':
@@ -471,6 +473,7 @@ class FEngine(Engine):
         Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng_', reg_suffix=str(self.adc), connect_passively=connect_passively)
         # set the default noise seed
         self.set_adc_noise_tvg_seed()
+        self.phase_switch_enable(self.phase_switch)
 
     def set_fft_shift(self,shift):
         """
@@ -559,11 +562,14 @@ class FEngine(Engine):
         Set the seed for the adc test vector generator.
         Default is 0xdeadbeef.
         """
-        self.write_int('noise_seed', seed)
-    def phase_switch_enable(self,val):
+        pass #for designs without the right register
+        #self.write_int('noise_seed', seed)
+    def phase_switch_enable(self,val,verbose=False):
         """
         Set the phase switch enable state to bool(val)
         """
+        if verbose:
+            print 'Setting phase switch of ant %d (adc %d) band %s:'%(self.ant, self.adc, self.band), val
         self.set_ctrl_sw_bits(21,21,int(val))
     def set_tge_outputs():
         """
@@ -734,6 +740,19 @@ class AmiSbl(AmiDC):
         if combine_complex:
             snap01   = np.array(snap01[0::2] + 1j*snap01[1::2], dtype=complex)
         return {'corr00':snap00,'corr11':snap11,'corr01':snap01,'timestamp':self.mcnt2time(mcnt)}
+
+    def set_phase_switches(self, override=None):
+        '''
+        Override phase switches enable with specified state.
+        If no state is given, set to the default enabled
+        state from the config file.
+        '''
+        for feng in self.fengs:
+            if override is not None:
+                feng.phase_switch_enable(override, verbose=True)
+            else:
+                feng.phase_switch_enable(feng.phase_switch, verbose=True)
+
     def mcnt2time(self,mcnt):
         """
         Convert an mcnt to a UTC time based on the instance's sync_time attribute.
