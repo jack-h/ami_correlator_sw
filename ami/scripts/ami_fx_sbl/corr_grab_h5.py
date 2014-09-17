@@ -69,6 +69,8 @@ if __name__ == '__main__':
     print "Got meta data"
     print "Current status", ctrl.meta_data.obs_status
     print "Current source", ctrl.meta_data.obs_name
+    print "Current RA,dec", ctrl.meta_data.ra, ctrl.meta_data.dec
+    print "Current nsamp,HA", ctrl.meta_data.nsamp, ctrl.meta_data.ha_reqd
 
     corr = AMI.AmiSbl(config_file=config_file, verbose=True, passive=True)
     time.sleep(0.1)
