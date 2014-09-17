@@ -5,3 +5,4 @@ ami/build
 ami/dist
 *.swp
 *.pkl
+*.*~
