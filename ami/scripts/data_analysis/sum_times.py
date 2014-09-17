@@ -27,16 +27,17 @@ def sum_times(cm,ts,dec):
     nfreqs=cm.shape[1]
     nbls=cm.shape[2]
     npols=cm.shape[3]
+    print "data shape is",cm.shape
     if len(cm.shape) == 5:
         dec_cm=n.zeros((len(ts)/dec,nfreqs,nbls,npols,2))
     elif len(cm.shape) == 4:
         dec_cm=n.zeros((len(ts)/dec,nfreqs,nbls,npols),dtype=n.complex128)
-        dec_ts=n.zeros(len(ts)/dec)
+    dec_ts=n.zeros(len(ts)/dec)
     time_index=0
     for t in range(len(dec_ts)):
         next_ts=0
         if len(cm.shape) == 5:
-            next_cm=n.zeros((nfreqs,nbls,npols))
+            next_cm=n.zeros((nfreqs,nbls,npols,2))
         elif len(cm.shape) == 4:
             next_cm=n.zeros((nfreqs,nbls,npols),dtype=n.complex128)
         for i in range(dec):

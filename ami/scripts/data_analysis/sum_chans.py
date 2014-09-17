@@ -95,7 +95,7 @@ for fni in args:
             #complexify
             if len(cm.shape) == 5:
                 print "complexifying input data"
-                cm = np.array(cm[:,:,:,:,1] + 1j*cm[:,:,:,:,0],dtype=np.complex64)
+                cm = n.array(cm[:,:,:,:,1] + 1j*cm[:,:,:,:,0],dtype=n.complex64)
         else:
             if type(fhi[item[0]]) == h5py.highlevel.Group:
                 tmp_grp = fhi.get(item[0])
