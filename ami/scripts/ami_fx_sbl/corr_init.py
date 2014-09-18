@@ -20,7 +20,7 @@ if __name__ == '__main__':
         help='override the phase switch settings from the config file with this boolean value. 1 for enable, 0 for disable.')
     p.add_option('-a', '--skip_arm', dest='skip_arm',action='store_true', default=False, 
         help='Use this switch to disable sync arm')
-    p.add_option('-v', '--verbosity', dest='verbosity',type='int', default=0, 
+    p.add_option('-v', '--verbosity', dest='verbosity',type='int', default=1, 
         help='Verbosity level. Default: 0')
     p.add_option('-t', '--tvg', dest='tvg',action='store_true', default=False, 
         help='Use corner turn tvg. Default:False')
