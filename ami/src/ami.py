@@ -17,7 +17,7 @@ class AmiDC(object):
     This class provides an interface to the correlator, using a config file
     for hardware set up.
     """
-    def __init__(self,config_file=None,verbose=False,passive=True):
+    def __init__(self,config_file=None,verbose=0,passive=True):
         """
         Instantiate a correlator object. Pass a config file for custom configurations,
         otherwise the AMI_DC_CONF environment variable will be used as the config file
@@ -605,7 +605,11 @@ class FEngine(Engine):
         """
         Calibrate the ADC associated with this engine, using the adc5g.calibrate_mmcm_phase method.
         """
+        # The phase switches must be off for calibration
+        self.phase_switch_enable(0)
         adc.calibrate_all_delays(self.roachhost,self.adc,snaps=[self.expand_name('snapshot_adc')],verbosity=verbosity)
+        # Set back to user-defined defaults
+        self.phase_switch_enable(self.phase_switch)
         #opt,glitches =  adc.calibrate_mmcm_phase(self.roachhost,self.adc,[self.expand_name('snapshot_adc')])
         #print opt
         #print glitches

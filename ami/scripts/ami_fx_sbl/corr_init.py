@@ -20,8 +20,6 @@ if __name__ == '__main__':
         help='override the phase switch settings from the config file with this boolean value. 1 for enable, 0 for disable.')
     p.add_option('-a', '--skip_arm', dest='skip_arm',action='store_true', default=False, 
         help='Use this switch to disable sync arm')
-    p.add_option('-l', '--passive', dest='passive',action='store_true', default=False, 
-        help='Use this flag to connect to the roaches without reconfiguring them')
     p.add_option('-v', '--verbosity', dest='verbosity',type='int', default=0, 
         help='Verbosity level. Default: 0')
     p.add_option('-t', '--tvg', dest='tvg',action='store_true', default=False, 
@@ -42,7 +40,7 @@ if __name__ == '__main__':
     # the roaches
     # If passive is True, the connections will be made without modifying
     # control software. Otherwise, the connections will be made, the roaches will be programmed and control software will be reset to 0.
-    corr = AMI.AmiSbl(config_file=config_file, verbose=True, passive=opts.skip_prog)
+    corr = AMI.AmiSbl(config_file=config_file, verbose=opts.verbosity, passive=opts.skip_prog)
     time.sleep(0.1)
 
     COARSE_DELAY = 16*10
