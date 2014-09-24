@@ -5,10 +5,13 @@ import numpy as np
 import time
 import struct
 import configparser
+import yaml
 from termcolor import colored
 import helpers
 import def_fstatus
 import cPickle as pickle
+import redis
+import config_redis
 
 
 class AmiDC(object):
@@ -28,13 +31,15 @@ class AmiDC(object):
         all FPGAs will be reprogrammed.
         """
         self.verbose = verbose
+        self.redis_host = config_redis.JsonRedis('ami_redis_host')
         if config_file is None:
-            self.config_file = os.environ.get('AMI_DC_CONF')
-            if self.config_file is None:
-                raise ValueError("No config file given, and no AMI_DC_CONF variable!")
+            self.config = yaml.load(self.redis_host.hget('config', 'conf'))
+            host = self.redis_host.hget('config', 'host')
+            fn = self.redis_host.hget('config', 'file')
+            config_file = '%s:%s'%(host, fn)
         else:
-            self.config_file = config_file
-        self.vprint("Building AmiDC with config file %s"%self.config_file)
+            self.config = yaml.load(config_file)
+        self.vprint("Building AmiDC with config file %s"%config_file)
         self.vprint("parsing config file")
         self.parse_config_file()
         self.vprint("connecting to roaches")
@@ -72,22 +77,17 @@ class AmiDC(object):
             # send two syncs, as the first is flushed
             self.all_fengs('man_sync')
             self.all_fengs('man_sync')
-        base_dir = os.path.dirname(self.config_file)
-        base_name = os.path.basename(self.config_file)
-        pkl_file = base_dir + "/sync_" + base_name.split(".xml")[0]+".pkl"
-        pickle.dump(self.sync_time, open(pkl_file, "wb"))
+        self.redis_host.set('sync_time', self.sync_time)
         return self.sync_time
 
     def load_sync(self):
         """Determines if a pickle file with the sync_time exists, returns that value else return 0"""
-        base_dir = os.path.dirname(self.config_file)
-        base_name = os.path.basename(self.config_file)
-        pkl_file = base_dir + "/sync_" + base_name.split(".xml")[0]+".pkl"
-        try:
-            self.sync_time = pickle.load(open(pkl_file))
-        except:
+        t = self.redis_host.get('sync_time')
+        if t is None:
             print "No previous Sync Time found, defaulting to 0 seconds since the Unix Epoch"
             self.sync_time = 0
+        else:
+            self.sync_time = t
         return self.sync_time
 
 
@@ -97,28 +97,28 @@ class AmiDC(object):
         for easy access.
         This method is automatically called on object instantiation.
         """
-        self.config = configparser.SafeConfigParser()
-        self.config.read(self.config_file)
         #some common params
-        self.n_ants  = self.config.getint('correlator_hard','n_ants')
-        self.n_bands = self.config.getint('correlator_hard','n_bands')
-        self.n_inputs= self.config.getint('correlator_hard','inputs_per_board')
-        self.n_chans = self.config.getint('correlator_hard','n_chans')
-        self.n_pols = self.config.getint('correlator_hard','n_pols')
-        self.output_format = self.config.get('correlator_hard','output_format')
-        self.acc_len = self.config.getint('correlator','acc_len')
-        self.data_path = self.config.get('correlator','data_path')
-        self.roaches = self.config['hardware'].get('roaches').split(',')
-        self.adc_clk = self.config.getint('hardware','adc_clk')
-        self.lo_freq = self.config.getint('hardware','mix_freq')
-        self.n_bls = (self.n_ants * (self.n_ants+1))/2
+        self.n_ants  = self.config['Configuration']['correlator']['hardcoded']['n_ants']
+        self.n_bands = self.config['Configuration']['correlator']['hardcoded']['n_bands']
+        self.n_inputs= self.config['Configuration']['correlator']['hardcoded']['inputs_per_board']
+        self.n_chans = self.config['Configuration']['correlator']['hardcoded']['n_chans']
+        self.n_pols  = self.config['Configuration']['correlator']['hardcoded']['n_pols']
+        self.output_format  = self.config['Configuration']['correlator']['hardcoded']['output_format']
+        self.acc_len  = self.config['Configuration']['correlator']['runtime']['acc_len']
+        self.data_path  = self.config['Configuration']['correlator']['runtime']['data_path']
+        self.adc_clk  = self.config['Configuration']['adc_clk']
+        self.lo_freq  = self.config['Configuration']['mix_freq']
+        self.n_bls = (self.n_ants * (self.n_ants + 1))/2
+
+        self.roaches = set([node['host'] for node in self.config['FEngine']['nodes']+self.config['XEngine']['nodes']])
+
         #shortcuts to sections
-        self.c_testing = self.config['testing']
-        self.c_correlator = self.config['correlator']
-        self.c_correlator_hard = self.config['correlator_hard']
-        self.c_hardware= self.config['hardware']
+        self.c_testing = self.config['Configuration']['correlator']['runtime']['testing']
+        self.c_correlator = self.config['Configuration']['correlator']['runtime']
+        self.c_correlator_hard = self.config['Configuration']['correlator']['hardcoded']
+        self.c_global = self.config['Configuration']
         #array config file
-        self.array_cfile = self.config.get('array','array_layout')
+        self.array_cfile = self.config['PostProcessing']['layout']
         # some debugging / info
         self.vprint("ROACHes are %r"%self.roaches)
 
@@ -130,11 +130,13 @@ class AmiDC(object):
         Returns a list of boolean values, corresponding to the connection
         state of each ROACH in the system.
         """
-        self.fpgas = []
+        self.fpgas = {}
+        connected = {}
         for rn,roachhost in enumerate(self.roaches):
             self.vprint("Connecting to ROACH %d, %s"%(rn,roachhost))
-            self.fpgas += [Roach(roachhost,boffile=self.c_hardware.get('boffile'))]
-        return [fpga.is_connected() for fpga in self.fpgas]
+            self.fpgas[roachhost] = Roach(roachhost,boffile=self.c_global['boffile'])
+            connected[roachhost] = self.fpgas[roachhost].is_connected()
+        return connected
 
     def initialise_f_engines(self,passive=False):
         """
@@ -142,12 +144,12 @@ class AmiDC(object):
         Append the FEngine instances to the self.fengs list.
         """
         self.fengs = []
-        for roach in self.fpgas:
-            for adc in range(self.n_inputs):
-                ant  = int(self.config.get(roach.host,'ant').split(',')[adc])
-                band = self.config.get(roach.host,'band').split(',')[adc]
-                phase_switch = self.config.get(roach.host,'phase_switch').split(',')[adc].strip(' ') == 'True'
-                self.fengs.append(FEngine(roach,adc,ant,band,adc_clk=self.adc_clk,lo_freq=self.lo_freq,n_chans=self.n_chans,phase_switch=phase_switch,connect_passively=passive))
+        for feng in self.config['FEngine']['nodes']:
+            self.fengs.append(FEngine(self.fpgas[feng['host']], feng['adc'], feng['ant'], feng['band'],
+                                                adc_clk=self.adc_clk, lo_freq=self.lo_freq, 
+                                                n_chans=self.config['FEngine']['n_chans'],
+                                                phase_switch=feng['phase_switch'], 
+                                                connect_passively=passive))
 
     def initialise_x_engines(self,passive=False):
         """
@@ -155,10 +157,8 @@ class AmiDC(object):
         Append the XEngine instances to the self.xengs list.
         """
         self.xengs = []
-        chans_per_roach = self.n_chans / len(self.fpgas)
-        for roach in self.fpgas:
-            band = self.config.get(roach.host,'xeng_band')
-            self.xengs.append(XEngine(roach,'ctrl',band=band,n_ants=self.n_ants,chans=chans_per_roach,connect_passively=passive, acc_len=self.acc_len))
+        for xeng in self.config['XEngine']['nodes']:
+            self.xengs.append(XEngine(self.fpgas[xeng['host']],'ctrl',band=xeng['band'],n_ants=self.n_ants,chans=self.config['XEngine']['n_chans'], connect_passively=passive, acc_len=self.acc_len))
 
     def all_fengs(self, method, *args, **kwargs):
         """
@@ -197,9 +197,9 @@ class AmiDC(object):
         here.
         """
         if callable(getattr(Roach,method)):
-            return [getattr(fpga, method)(*args, **kwargs) for fpgas in self.fpgas]
+            return [getattr(fpga, method)(*args, **kwargs) for fpgas in self.fpgas.values()]
         else:
-            return [getattr(fpga,method) for fpga in self.fpgas]
+            return [getattr(fpga,method) for fpga in self.fpgas.values()]
 
     def program_all(self,reinitialise=True):
         """
@@ -209,7 +209,7 @@ class AmiDC(object):
         If reinitialise=False, no engines are instantiated (you will have to call initialise_f/x_engines
         manually.)
         """
-        for roach in self.fpgas:
+        for roach in self.fpgas.values():
             self.vprint("Programming ROACH %s with boffile %s"%(roach.host,roach.boffile))
             roach.safe_prog()
         if reinitialise:
@@ -470,6 +470,7 @@ class FEngine(Engine):
             self.inv_band = False
         else:
             raise ValueError('FEngine Error: band can only have values "low" or "high"')
+        #Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng%s_'%str(self.adc), reg_suffix='', connect_passively=connect_passively)
         Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng_', reg_suffix=str(self.adc), connect_passively=connect_passively)
         # set the default noise seed
         self.set_adc_noise_tvg_seed()

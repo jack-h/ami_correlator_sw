@@ -1,6 +1,8 @@
 import os
 import h5py
 import configparser
+import yaml
+import config_redis
 
 class H5Writer(object):
     """
@@ -12,12 +14,11 @@ class H5Writer(object):
         AMI_DC_CONF variable if none is provided.
         band: 'high' or 'low'. The sideband of the data being written. 
         """
+        self.redis_host = config_redis.JsonRedis('ami_redis_host')
         if config_file is None:
-            self.config_file = os.environ.get('AMI_DC_CONF')
-            if self.config_file is None:
-                raise ValueError("No config file given, and no AMI_DC_CONF variable!")
+            self.config = yaml.load(self.redis_host.hget('config', 'conf'))
         else:
-            self.config_file = config_file
+            self.config = yaml.load(config_file)
         self.band = band
         self.parse_config_file()
         self.datasets = {}
@@ -27,22 +28,20 @@ class H5Writer(object):
         """
         Parse the config file, saving some values to attributes for easy access
         """
-        self.config = configparser.SafeConfigParser()
-        self.config.read(self.config_file)
         #some common params
-        self.n_ants  = self.config.getint('correlator_hard','n_ants')
-        self.n_pols  = self.config.getint('correlator_hard','n_pols')
-        self.n_bands = self.config.getint('correlator_hard','n_bands')
-        self.n_inputs= self.config.getint('correlator_hard','inputs_per_board')
-        self.n_chans = self.config.getint('correlator_hard','n_chans')
-        self.output_format = self.config.get('correlator_hard','output_format')
-        self.acc_len = self.config.getint('correlator','acc_len')
-        self.data_path = self.config.get('correlator','data_path')
-        self.roaches = self.config['hardware'].get('roaches').split(',')
-        self.bands = [self.config.get(roach,'xeng_band') for roach in self.roaches]
-        self.adc_clk = self.config.getint('hardware','adc_clk')
-        self.lo_freq = self.config.getint('hardware','mix_freq')
-        self.n_bls = (self.n_ants * (self.n_ants+1))/2
+        self.n_ants  = self.config['Configuration']['correlator']['hardcoded']['n_ants']
+        self.n_bands = self.config['Configuration']['correlator']['hardcoded']['n_bands']
+        self.n_inputs= self.config['Configuration']['correlator']['hardcoded']['inputs_per_board']
+        self.n_chans = self.config['Configuration']['correlator']['hardcoded']['n_chans']
+        self.n_pols  = self.config['Configuration']['correlator']['hardcoded']['n_pols']
+        self.output_format  = self.config['Configuration']['correlator']['hardcoded']['output_format']
+        self.acc_len  = self.config['Configuration']['correlator']['runtime']['acc_len']
+        self.data_path  = self.config['Configuration']['correlator']['runtime']['data_path']
+        self.adc_clk  = self.config['Configuration']['adc_clk']
+        self.lo_freq  = self.config['Configuration']['mix_freq']
+        self.n_bls = (self.n_ants * (self.n_ants + 1))/2
+
+        self.roaches = set([node['host'] for node in self.config['FEngine']['nodes']+self.config['XEngine']['nodes']])
         if self.n_bands == 2:
             self.center_freq = self.lo_freq
         elif self.bands[0] == 'low':
@@ -51,10 +50,12 @@ class H5Writer(object):
             self.center_freq = self.lo_freq + self.adc_clk/4.
         self.bandwidth = self.adc_clk/2. * self.n_bands
         #shortcuts to sections
-        self.c_testing = self.config['testing']
-        self.c_correlator = self.config['correlator']
-        self.c_correlator_hard = self.config['correlator_hard']
-        self.c_hardware= self.config['hardware']
+        self.c_testing = self.config['Configuration']['correlator']['runtime']['testing']
+        self.c_correlator = self.config['Configuration']['correlator']['runtime']
+        self.c_correlator_hard = self.config['Configuration']['correlator']['hardcoded']
+        self.c_global = self.config['Configuration']
+        #array config file
+        self.array_cfile = self.config['PostProcessing']['layout']
         ##array configuration
         #self.array_cfile = self.config.get('array','array_layout')
         #self.array_config = configparser.SafeConfigParser()

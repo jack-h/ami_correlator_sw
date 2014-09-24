@@ -50,7 +50,7 @@ if __name__ == '__main__':
     else:
         corr.set_phase_switches(override=bool(opts.phase_switch))
 
-    corr.all_fengs('set_fft_shift',corr.c_correlator.getint('fft_shift'))
+    corr.all_fengs('set_fft_shift',corr.c_correlator['fft_shift'])
     corr.all_fengs('set_coarse_delay',COARSE_DELAY)
 
     #corr.fengs[0].set_coarse_delay(COARSE_DELAY)

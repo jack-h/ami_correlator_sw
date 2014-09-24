@@ -57,20 +57,18 @@ if __name__ == '__main__':
     time.sleep(0.1)
 
     # load the existing coefficients
-    base_dir = os.path.dirname(corr.config_file)
-    base_name = os.path.basename(corr.config_file)
-    coeff_file = base_dir + "/eq_" + base_name.split(".xml")[0]+".pkl"
     coeffs = {}
     if not load_new:
-        print "trying to load EQ coefficients from %s"%coeff_file
-        try:
-            fh = open(coeff_file,'r')
-            coeffs = pickle.load(fh)
-            fh.close()
-        except:
-            print "Couldn't load coefficients. Computing new ones"
-            load_new = True
-
+        print "trying to load EQ coefficients over redis"
+        for feng in corr.fengs:
+            keyname = 'ANT%d_%s'%(feng.ant, feng.band)
+            c = corr.redis_host.get(keyname)
+            if c is None:
+                print "Couldn't load new coefficients. Computing new ones"
+                load_new = True
+                break
+            else:
+                coeffs[keyname] = np.array(c)
     
     decimation=2
     vec_width = corr.n_chans/decimation
@@ -142,10 +140,10 @@ if __name__ == '__main__':
 
     # save new coeffs if there are some
     if load_new:
-        print "Saving new coefficients to %s"%coeff_file
-        fh = open(coeff_file,'w')
-        pickle.dump(coeffs,fh)
-        fh.close()
+        print "Saving new coefficients to redis"
+        for key in coeffs.keys():
+            corr.redis_host.set(key, coeffs[key].tolist())
+        corr.redis_host.set('eq_coeffs_time', time.time())
 
     if opts.plot:
         pylab.show()

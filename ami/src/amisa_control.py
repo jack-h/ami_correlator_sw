@@ -3,6 +3,8 @@ import configparser
 import socket
 import os
 import string
+import config_redis
+import yaml
 
 class AmiControlInterface(object):
     """
@@ -16,12 +18,14 @@ class AmiControlInterface(object):
         Initialise the interface, based on the config_file provided, or the AMI_DC_CONF
         environment variable is config_file=None
         """
+        self.redis_host = config_redis.JsonRedis('ami_redis_host')
         if config_file is None:
-            self.config_file = os.environ.get('AMI_DC_CONF')
-            if self.config_file is None:
-                raise ValueError("No config file given, and no AMI_DC_CONF variable!")
+            self.config = yaml.load(self.redis_host.hget('config', 'conf'))
+            host = self.redis_host.hget('config', 'host')
+            fn = self.redis_host.hget('config', 'file')
+            config_file = '%s:%s'%(host, fn)
         else:
-            self.config_file = config_file
+            self.config = yaml.load(config_file)
         self.parse_config_file()
         self.bind_sockets()
         self.meta_data = AmiMetaData(n_ants=self.n_ants,n_agcs=self.n_agcs)
@@ -36,16 +40,14 @@ class AmiControlInterface(object):
         """
         Parse the config file, saving some values as attributes for easy access
         """
-        self.config = configparser.SafeConfigParser()
-        self.config.read(self.config_file)
         #relevant parameters
-        self.control_ip = self.config.get('control_interface','control_ip')
-        self.data_port  = self.config.getint('control_interface','data_port')
-        self.meta_port  = self.config.getint('control_interface','meta_port')
-        self.n_ants      = self.config.getint('control_interface','n_ants')
-        self.n_agcs      = self.config.getint('control_interface','n_agcs')
-        self.n_chans     = self.config.getint('correlator_hard','n_chans')
-        self.n_bands     = self.config.getint('correlator_hard','n_bands')
+        self.control_ip = self.config['Configuration']['control_interface']['host']
+        self.data_port  = self.config['Configuration']['control_interface']['data_port']
+        self.meta_port  = self.config['Configuration']['control_interface']['meta_port']
+        self.n_ants      = self.config['Configuration']['control_interface']['n_ants']
+        self.n_agcs      = self.config['Configuration']['control_interface']['n_agcs']
+        self.n_chans     = self.config['Configuration']['correlator']['hardcoded']['n_chans']
+        self.n_bands     = self.config['Configuration']['correlator']['hardcoded']['n_bands']
     def bind_sockets(self):
         """
         Bind the sockets to the data and metadata server

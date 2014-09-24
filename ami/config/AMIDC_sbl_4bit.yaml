@@ -1,0 +1,86 @@
+Configuration:
+    katcp_port: 7147
+    boffile: ami_fx_sbl_nofs_2014_Jun_03_2357.bof
+    adc_clk: 5000
+    mix_freq: 9000
+    redis_host: localhost
+    redis_port: 6379
+    control_interface:
+        host: 131.111.48.30
+        data_port: 2007
+        meta_port: 2006
+        n_ants: 10
+        n_agcs: 40
+    correlator:
+        hardcoded:
+            n_ants: 2
+            n_bands: 2
+            n_chans: 2048
+            inputs_per_board: 2
+            window_len: 8
+            output_format: l
+            n_pols: 1
+        runtime:
+            fft_shift: 0b111011011011011
+            ten_gbe:
+                network: 10.0.0.0
+                port: 10000
+            one_gbe:
+                network: 10.0.1.0
+                port: 10000
+            testing:
+                ct_tvg: no
+                qdr_tvg: no
+                vacc_tvg: no
+            acc_len: 152588
+            data_path: /data
+
+PostProcessing:
+    layout: AMISA.conf
+
+XEngine:
+    n_chans: 2048
+    n_ants: 2
+
+    nodes:
+        - band: low
+          host: alice
+
+        - band: high
+          host: bob
+
+
+FEngine:
+    n_chans: 2048
+    
+    nodes:
+        - ant: 3
+          band: low
+          adc: 0
+          host: alice
+          phase_switch: yes
+
+        - ant: 7
+          band: low
+          adc: 1
+          host: alice
+          phase_switch: no
+
+        - ant: 3
+          band: high
+          adc: 0
+          host: bob
+          phase_switch: yes
+
+        - ant: 7
+          band: high
+          adc: 1
+          host: bob
+          phase_switch: no
+
+XEngines:
+    - chans: 0, 2047
+      host: alice
+
+    - chans: 2048, 4095
+      host: bob
