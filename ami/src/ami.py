@@ -20,7 +20,7 @@ class AmiDC(object):
     This class provides an interface to the correlator, using a config file
     for hardware set up.
     """
-    def __init__(self,config_file=None,verbose=0,passive=True):
+    def __init__(self, config_file=None, verbose=0, passive=True, skip_prog=True):
         """
         Instantiate a correlator object. Pass a config file for custom configurations,
         otherwise the AMI_DC_CONF environment variable will be used as the config file
@@ -45,10 +45,14 @@ class AmiDC(object):
         self.vprint("connecting to roaches")
         self.connect_to_roaches()
         time.sleep(0.1)
+
         if passive:
-            self.vprint("Initialising ROACHes passively")
-            self.initialise_f_engines(passive=passive)
-            self.initialise_x_engines(passive=passive)
+            self.initialise_f_engines(passive=True)
+            self.initialise_x_engines(passive=True)
+            self.load_sync()
+        elif skip_prog:
+            self.initialise_f_engines(passive=False)
+            self.initialise_x_engines(passive=False)
             self.load_sync()
         else:
             self.program_all()
@@ -106,8 +110,8 @@ class AmiDC(object):
         self.output_format  = self.config['Configuration']['correlator']['hardcoded']['output_format']
         self.acc_len  = self.config['Configuration']['correlator']['runtime']['acc_len']
         self.data_path  = self.config['Configuration']['correlator']['runtime']['data_path']
-        self.adc_clk  = self.config['Configuration']['adc_clk']
-        self.lo_freq  = self.config['Configuration']['mix_freq']
+        self.adc_clk  = self.config['FEngine']['adc_clk']
+        self.lo_freq  = self.config['FEngine']['mix_freq']
         self.n_bls = (self.n_ants * (self.n_ants + 1))/2
 
         self.roaches = set([node['host'] for node in self.config['FEngine']['nodes']+self.config['XEngine']['nodes']])
@@ -145,11 +149,15 @@ class AmiDC(object):
         """
         self.fengs = []
         for feng in self.config['FEngine']['nodes']:
-            self.fengs.append(FEngine(self.fpgas[feng['host']], feng['adc'], feng['ant'], feng['band'],
-                                                adc_clk=self.adc_clk, lo_freq=self.lo_freq, 
-                                                n_chans=self.config['FEngine']['n_chans'],
-                                                phase_switch=feng['phase_switch'], 
-                                                connect_passively=passive))
+            feng_attrs = {}
+            for key in feng.keys():
+                feng_attrs[key] = feng[key]
+            for key in self.config['FEngine'].keys():
+                if key not in feng_attrs.keys():
+                    feng_attrs[key] = self.config['FEngine'][key]
+            self.fengs.append(FEngine(self.fpgas[feng['host']], 
+                                      connect_passively=passive,
+                                      **feng_attrs))
 
     def initialise_x_engines(self,passive=False):
         """
@@ -444,37 +452,42 @@ class FEngine(Engine):
     """
     A subclass of Engine, encapsulating F-Engine specific properties.
     """
-    def __init__(self,roachhost,adc,ant,band,n_chans=1024,adc_clk=4000.,lo_freq=0.,ctrl_reg='ctrl',phase_switch=True,connect_passively=True):
+    def __init__(self, roachhost, ctrl_reg='ctrl', connect_passively=False, **kwargs):
         """
         Instantiate an F-Engine.
-        adc: An integer, refering to the ADC (ZDOK) number associated with this engine.
-        ant: The antenna number processed by this engine.
-        band: 'low' or 'high' -- The sideband processed by this engine
-        n_chans: The number of channels this engine generates
-        adc_clk: The ADC sample clock (in MHz)
-        lo_freq: The mixing frequency of any LO prior to this engines ADC
+        roachhost: A katcp FpgaClient object for the host on which this engine is instantiated
         ctrl_reg: The name of the control register of this engine
         connect_passively: True if you want to instantiate an engine without modifying it's
         current running state. False if you want to reinitialise the control software of this engine.
+        config: A dictionary of parameters for this fengine
         """
-        self.adc = adc
-        self.adc_clk = adc_clk
-        self.lo_freq = lo_freq
-        self.ant = ant
-        self.band = band
-        self.n_chans = n_chans
-        self.phase_switch = phase_switch
+        # attributize dictionary
+        for key in kwargs.keys():
+            self.__setattr__(key, kwargs[key])
+
         if self.band == 'low':
             self.inv_band = True
         elif self.band == 'high':
             self.inv_band = False
         else:
             raise ValueError('FEngine Error: band can only have values "low" or "high"')
-        #Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng%s_'%str(self.adc), reg_suffix='', connect_passively=connect_passively)
-        Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng_', reg_suffix=str(self.adc), connect_passively=connect_passively)
+        Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng%s_'%str(self.adc), reg_suffix='', connect_passively=connect_passively)
+        #Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng_', reg_suffix=str(self.adc), connect_passively=connect_passively)
         # set the default noise seed
-        self.set_adc_noise_tvg_seed()
-        self.phase_switch_enable(self.phase_switch)
+        if not connect_passively:
+            self.set_adc_noise_tvg_seed()
+            self.phase_switch_enable(self.phase_switch)
+            self.noise_switch_enable(True)
+            self.set_adc_acc_len()
+            self.set_fft_acc_len()
+
+    def config_get(self, key):
+        if key in self.config.keys():
+            return self.config[key]
+        elif key in self.global_config.keys():
+            return self.global_config[key]
+        else:
+            raise KeyError('Key %s not in local or global configs!'%key)
 
     def set_fft_shift(self,shift):
         """
@@ -563,8 +576,7 @@ class FEngine(Engine):
         Set the seed for the adc test vector generator.
         Default is 0xdeadbeef.
         """
-        pass #for designs without the right register
-        #self.write_int('noise_seed', seed)
+        self.write_int('noise_seed', seed)
     def phase_switch_enable(self,val,verbose=False):
         """
         Set the phase switch enable state to bool(val)
@@ -572,6 +584,27 @@ class FEngine(Engine):
         if verbose:
             print 'Setting phase switch of ant %d (adc %d) band %s:'%(self.ant, self.adc, self.band), val
         self.set_ctrl_sw_bits(21,21,int(val))
+    def noise_switch_enable(self, val):
+        """
+        Enable or disable the noise switching circuitry
+        """
+        self.set_ctrl_sw_bits(22,22,int(val))
+    def set_adc_acc_len(self, val=None):
+        if val is None:
+            self.write_int('adc_acc_len', self.adc_power_acc_len >> (4 + 8))
+        else:
+            self.write_int('adc_acc_len', val >> (4 + 8))
+    def set_fft_acc_len(self, val=None):
+        if 'auto_acc_len' in self.listdev():
+            if val is None:
+                self.write_int('auto_acc_len', self.fft_power_acc_len)
+            else:
+                self.write_int('auto_acc_len', val)
+        else:
+            if val is None:
+                self.write_int('auto_acc_len1', self.fft_power_acc_len)
+            else:
+                self.write_int('auto_acc_len1', val)
     def set_tge_outputs():
         """
         Configure engine's 10GbE outputs.
@@ -614,6 +647,29 @@ class FEngine(Engine):
         #opt,glitches =  adc.calibrate_mmcm_phase(self.roachhost,self.adc,[self.expand_name('snapshot_adc')])
         #print opt
         #print glitches
+    def get_adc_power(self):
+        init_val = self.read_int('adc_sum_sq0')
+        while (True):
+            v = self.read_int('adc_sum_sq0')
+            #print v
+            if v != init_val:
+                break
+            time.sleep(0.01)
+        v += (self.read_int('adc_sum_sq1') << 32)
+        if v > (2**63 - 1):
+            v -= 2**64
+        return v / (2**7 * 256.0 * 16.0 * (self.adc_power_acc_len >> (4 + 8)))
+
+    def get_spectra(self):
+        d = np.zeros(self.n_chans)
+        for i in range(4):
+            s = self.snap('auto_snap_%d'%i, format='q')
+            d[2*i::8] = s[0::2]
+            d[2*i + 1::8] = s[1::2]
+        d /= float(self.fft_power_acc_len)
+        d /= 2**34
+        return d
+
 
 
 class XEngine(Engine):
@@ -670,7 +726,7 @@ class AmiSbl(AmiDC):
     """
     A subclass of AmiDC for the single-ROACH, single-baseline correlator
     """
-    def __init__(self,config_file=None,verbose=False,passive=True):
+    def __init__(self,config_file=None,verbose=False,passive=True,skip_prog=True):
         """
         Instantiate a correlator object. Pass a config file for custom configurations,
         otherwise the AMI_DC_CONF environment variable will be used as the config file
@@ -680,7 +736,7 @@ class AmiSbl(AmiDC):
         but no changes will be made to any hardware set up. If passive is False,
         all FPGAs will be reprogrammed.
         """
-        AmiDC.__init__(self,config_file=config_file,verbose=verbose,passive=passive)
+        AmiDC.__init__(self,config_file=config_file,verbose=verbose,passive=passive,skip_prog=skip_prog)
     def snap_corr(self,wait=True,combine_complex=True):
         """
         Snap new correlations from bram.
