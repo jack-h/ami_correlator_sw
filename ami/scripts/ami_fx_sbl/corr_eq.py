@@ -71,34 +71,34 @@ if __name__ == '__main__':
                 coeffs[keyname] = np.array(c)
     
     decimation=2
-    vec_width = corr.n_chans/decimation
+    vec_width = corr.n_chans
     for feng in corr.fengs:
+        # turn off noise switch so we can sample powers
+        feng.noise_switch_enable(False)
+        time.sleep(1)
         if load_new:
             print "Computing new coefficients"
             d = np.zeros(vec_width)
             for n in range(opts.samples):
                 print '%d: Snapping data from ANT: %d, BAND: %s'%(n,feng.ant,feng.band)
-                dlo = feng.snap('fft_low_snap',format='Q')[0:vec_width/2]/(2.**34) # normalise to 1 (data is 18_17 the converted to power, UFix36_34)
-                dhi = feng.snap('fft_high_snap',format='Q')[0:vec_width/2]/(2.**34)
-                print 'done'
-                #  This weird assignment is a firmware mess up. fix it
-                d[0:vec_width:4] += dlo[0::2]
-                d[1:vec_width:4] += dlo[1::2]
-                d[2:vec_width:4] += dhi[0::2]
-                d[3:vec_width:4] += dhi[1::2]
-            d /= 1024. #there is an inherent accumulation of 1024 spectra on the FPGA
+                d += feng.get_spectra()
+            # calculate target mean power, scaled for 4 bits
+            d /= float(opts.samples)
+            mean_power = np.mean(d)
+            lowlimit = mean_power / float(opts.cutoff)
             if opts.plot:
                 pylab.figure(1)
-                pylab.plot(dbs(d/opts.samples),label='ANT %d, BAND %s'%(feng.ant,feng.band))
+                pylab.plot(dbs(d),label='ANT %d, BAND %s'%(feng.ant,feng.band))
+                pylab.axhline(y=10*np.log10(lowlimit),label='ANT %d, BAND %s limit'%(feng.ant,feng.band), color=pylab.gca().lines[-1].get_color())
                 pylab.legend()
                 pylab.title("Autocorrelation Passbands")
                 pylab.ylabel("Power (db)")
                 pylab.xlabel("Decimated Channel Number")
 
-            # calculate target mean power, scaled for 4 bits
-            mean_power = d / opts.samples
-            eq = (np.sqrt(1./mean_power)) * opts.targetpower
-            eq[eq>np.mean(eq)*opts.cutoff] = 0
+            eq = (np.sqrt(1./d)) * opts.targetpower
+            #eq[eq>np.mean(eq)*opts.cutoff] = 0
+            eq[d<lowlimit] = 0
+            eq = eq[::decimation]
             if opts.plot:
                 pylab.figure(2)
                 pylab.plot(eq,label='ANT %d, BAND %s'%(feng.ant,feng.band))
@@ -123,7 +123,8 @@ if __name__ == '__main__':
         #pylab.legend()
 
         print "Grabbing snapshot of quantized signal for Antenna %d %s band"%(feng.ant,feng.band)
-        quant = uint2int(feng.snap('quant_snap',format='B',wait_period=3),4,3,complex=True)[0:corr.n_chans]
+        #quant = uint2int(feng.snap('quant_snap',format='B',wait_period=3),4,3,complex=True)[0:corr.n_chans]
+        quant = uint2int(feng.roachhost.snap('feng_quant_snap%d'%feng.adc,format='B',wait_period=3),4,3,complex=True)[0:corr.n_chans]
         print 'done'
         dev = np.std(np.abs(quant))
         levelwidth = 2**-3
