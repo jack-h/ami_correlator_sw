@@ -1,8 +1,6 @@
 Configuration:
     katcp_port: 7147
-    boffile: ami_fx_sbl_nofs_2014_Jun_03_2357.bof
-    adc_clk: 5000
-    mix_freq: 9000
+    boffile: ami_fx_sbl_nofs_2014_Sep_30_1526.bof
     redis_host: localhost
     redis_port: 6379
     control_interface:
@@ -52,6 +50,10 @@ XEngine:
 
 FEngine:
     n_chans: 2048
+    adc_power_acc_len: 2500000000
+    fft_power_acc_len: 610351
+    adc_clk: 5000
+    mix_freq: 9000
     
     nodes:
         - ant: 3
