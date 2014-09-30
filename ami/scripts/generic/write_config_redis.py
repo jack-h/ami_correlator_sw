@@ -7,7 +7,7 @@ args = sys.argv[1:]
 if args == []:
     config_file = os.environ.get('AMI_DC_CONF')
 else:
-    config_file = args[1]
+    config_file = args[0]
 
 print 'Configuration file is:', config_file
 
