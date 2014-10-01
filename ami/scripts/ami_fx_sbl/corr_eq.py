@@ -39,7 +39,7 @@ if __name__ == '__main__':
     p.add_option('-t', '--targetpower', dest='targetpower', type='float', default=0.1,
         help='Mean power target. Default:0.1')
     p.add_option('-c', '--cutoff', dest='cutoff', type='float', default=10.,
-        help='Set a cutoff level for <cutoff> EQ coefficients. Coefficients >[cutoff]*mean coefficient will be set to zero. Default:10')
+        help='Set a cutoff level for <cutoff> EQ coefficients. Where power[channel] < (mean power / cutoff), EQ coefficients will be set to zero. Default: 10.0')
     p.add_option('--new', dest='new', action='store_true', default=False,
         help='Use this flag to generate new coefficients. Otherwise, existing coefficients will be used unless they don\'t exist')
     p.add_option('-p', '--plot', dest='plot', action='store_true', default=False,
@@ -124,7 +124,7 @@ if __name__ == '__main__':
 
         print "Grabbing snapshot of quantized signal for Antenna %d %s band"%(feng.ant,feng.band)
         #quant = uint2int(feng.snap('quant_snap',format='B',wait_period=3),4,3,complex=True)[0:corr.n_chans]
-        quant = uint2int(feng.roachhost.snap('feng_quant_snap%d'%feng.adc,format='B',wait_period=3),4,3,complex=True)[0:corr.n_chans]
+        quant = uint2int(feng.snap('quant_snap',format='B',wait_period=3),4,3,complex=True)[0:corr.n_chans]
         print 'done'
         dev = np.std(np.abs(quant))
         levelwidth = 2**-3
