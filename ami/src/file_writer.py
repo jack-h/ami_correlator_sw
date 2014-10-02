@@ -37,8 +37,8 @@ class H5Writer(object):
         self.output_format  = self.config['Configuration']['correlator']['hardcoded']['output_format']
         self.acc_len  = self.config['Configuration']['correlator']['runtime']['acc_len']
         self.data_path  = self.config['Configuration']['correlator']['runtime']['data_path']
-        self.adc_clk  = self.config['Configuration']['adc_clk']
-        self.lo_freq  = self.config['Configuration']['mix_freq']
+        self.adc_clk  = self.config['FEngine']['adc_clk']
+        self.lo_freq  = self.config['FEngine']['mix_freq']
         self.n_bls = (self.n_ants * (self.n_ants + 1))/2
 
         self.roaches = set([node['host'] for node in self.config['FEngine']['nodes']+self.config['XEngine']['nodes']])
