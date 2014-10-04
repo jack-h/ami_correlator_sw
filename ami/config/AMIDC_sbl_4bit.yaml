@@ -47,6 +47,27 @@ XEngine:
         - band: high
           host: bob
 
+Antennas:
+    - ant: 0
+      index: 9
+    - ant: 1
+      index: 9
+    - ant: 2
+      index: 9
+    - ant: 3
+      index: 0
+    - ant: 4
+      index: 9
+    - ant: 5
+      index: 9
+    - ant: 6
+      index: 9
+    - ant: 7
+      index: 1
+    - ant: 8
+      index: 9
+    - ant: 9
+      index: 9
 
 FEngine:
     n_chans: 2048

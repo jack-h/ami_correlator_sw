@@ -11,7 +11,7 @@ import ami.file_writer as fw
 import pylab
 import signal
 
-def write_data(writer, d, timestamp, meta):
+def write_data(writer, d, timestamp, meta, **kwargs):
     for entry in meta.entries:
        name = entry['name']
        if name is not 'obs_name':
@@ -26,6 +26,8 @@ def write_data(writer, d, timestamp, meta):
            writer.append_data(name, [length], val, data_type)
     writer.append_data('xeng_raw0', d.shape, d, np.int64)
     writer.append_data('timestamp0', [1], timestamp, np.int64)
+    for key, value in kwargs.iteritems():
+        writer.append_data(key, value.shape, value, value.dtype)
 
 def signal_handler(signum, frame):
     """
@@ -118,6 +120,17 @@ if __name__ == '__main__':
                 mcnt_old = mcnt
                 d = corr.snap_corr(wait=False,combine_complex=False)
                 cnt += 1
+                # get noise switch data
+                noise_switched_data = np.zeros([corr.n_ants, corr.n_chans*corr.n_bands], dtype=np.float32)
+                for fn, feng in enumerate(corr.fengs):
+                    ant_index = corr.config['Antennas'][feng.ant]['index']
+                    from_redis = corr.redis_host.get('STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band))
+                    if from_redis is not None:
+                        if feng.band == 'high':
+                            noise_switched_data[ant_index,feng.n_chans:2*feng.n_chans] = from_redis
+                        elif feng.band == 'low':
+                            noise_switched_data[ant_index,0:feng.n_chans] = from_redis
+
                 if d is not None:
                     datavec[:,0,0,1] = d['corr00']
                     datavec[:,1,0,1] = d['corr11']
@@ -139,7 +152,7 @@ if __name__ == '__main__':
 
                     if not opts.test_tx:
                         ctrl.try_send(d['timestamp'],1,cnt,txdata)
-                        write_data(writer,datavec,d['timestamp'],ctrl.meta_data)
+                        write_data(writer,datavec,d['timestamp'],ctrl.meta_data,noise_demod=noise_switched_data)
                         #pylab.plot(helpers.dbs(np.abs(txdata)))
                         #pylab.plot(np.abs(txdata))
                         #pylab.show()
