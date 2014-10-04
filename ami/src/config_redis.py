@@ -33,7 +33,13 @@ class JsonRedis(redis.Redis):
             return json.loads(v)
 
     def set(self, name, value, **kwargs):
+        '''
+        JSONify the input and send to redis.
+        Automatically send a key containing the
+        update time, with keyname 'name:last_update_time:'
+        '''
         redis.Redis.set(self, name, json.dumps(value), **kwargs)
+        redis.Redis.set(self, name+':last_update_time', time.time())
         
 
     
