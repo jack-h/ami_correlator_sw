@@ -51,7 +51,7 @@ XEngine:
 FEngine:
     n_chans: 2048
     adc_power_acc_len: 2500000000
-    fft_power_acc_len: 610351
+    fft_power_acc_len: 1220704
     adc_clk: 5000
     mix_freq: 9000
     
