@@ -706,7 +706,7 @@ class FEngine(Engine):
             v -= 2**64
         return v / (2**7 * 256.0 * 16.0 * (self.adc_power_acc_len >> (4 + 8)))
 
-    def get_spectra(self):
+    def get_spectra(self, autoflip=False):
         d = np.zeros(self.n_chans)
         # arm snap blocks
         # WARNING: we can't gaurantee that they all trigger off the same pulse
@@ -733,6 +733,9 @@ class FEngine(Engine):
 
         d /= float(self.fft_power_acc_len)
         d /= 2**34
+        if autoflip and (self.band == 'high'):
+            d = d[::-1]
+
         return d
 
 

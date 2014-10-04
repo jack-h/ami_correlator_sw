@@ -32,10 +32,9 @@ if __name__ == '__main__':
     # turn on the noise switch
     a = corr.all_fengs_multithread('noise_switch_enable', True)
 
-
     while(True):
         tic = time.time()
-        spectra = corr.all_fengs_multithread('get_spectra')
+        spectra = corr.all_fengs_multithread('get_spectra', autoflip=True)
         toc = time.time()
         print 'New data acquired in time:', toc - tic
         for fn, feng in enumerate(corr.fengs):
