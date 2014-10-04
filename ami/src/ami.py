@@ -12,6 +12,18 @@ import def_fstatus
 import cPickle as pickle
 import redis
 import config_redis
+import threading
+import Queue
+
+def _queue_instance_method(q, num, inst, method, args, kwargs):
+    '''
+    Add an [num, inst.method(*args, **kwargs)] call to queue, q.
+    Use q.get() to get the return data from this call.
+    
+    This function is used for parallelizing calls to multiple
+    roaches/engines.
+    '''
+    q.put([num, getattr(inst, method)(*args, **kwargs)])
 
 
 class AmiDC(object):
@@ -148,7 +160,7 @@ class AmiDC(object):
         Append the FEngine instances to the self.fengs list.
         """
         self.fengs = []
-        for feng in self.config['FEngine']['nodes']:
+        for fn, feng in enumerate(self.config['FEngine']['nodes']):
             feng_attrs = {}
             for key in feng.keys():
                 feng_attrs[key] = feng[key]
@@ -157,7 +169,8 @@ class AmiDC(object):
                     feng_attrs[key] = self.config['FEngine'][key]
             self.fengs.append(FEngine(self.fpgas[feng['host']], 
                                       connect_passively=passive,
-                                      **feng_attrs))
+                                      num=fn, **feng_attrs))
+        self.n_fengs = len(self.fengs)
 
     def initialise_x_engines(self,passive=False):
         """
@@ -165,8 +178,9 @@ class AmiDC(object):
         Append the XEngine instances to the self.xengs list.
         """
         self.xengs = []
-        for xeng in self.config['XEngine']['nodes']:
-            self.xengs.append(XEngine(self.fpgas[xeng['host']],'ctrl',band=xeng['band'],n_ants=self.n_ants,chans=self.config['XEngine']['n_chans'], connect_passively=passive, acc_len=self.acc_len))
+        for xn, xeng in enumerate(self.config['XEngine']['nodes']):
+            self.xengs.append(XEngine(self.fpgas[xeng['host']],'ctrl',band=xeng['band'],n_ants=self.n_ants,chans=self.config['XEngine']['n_chans'], connect_passively=passive, acc_len=self.acc_len, num=xn))
+        self.n_xengs = len(self.xengs)
 
     def all_fengs(self, method, *args, **kwargs):
         """
@@ -179,6 +193,35 @@ class AmiDC(object):
         if callable(getattr(FEngine,method)):
             return [getattr(feng, method)(*args, **kwargs) for feng in self.fengs]
         else:
+            # no point in multithreading this
+            return [getattr(feng,method) for feng in self.fengs]
+
+    def all_fengs_multithread(self, method, *args, **kwargs):
+        """
+        Call FEngine method 'method' against all FEngine instances.
+        Use a different thread per engine so calls don't block. This
+        is useful for things like snapshot_get() where we might not
+        want to wait for a snapshot to be grabbed before moving on to
+        the next engine.
+        Optional arguments are passed to the FEngine method calls.
+        If an attribute rather than a method is specified, the attribute value
+        will be returned as a list (one entry for each F-Engine). Otherwise the
+        return value is that of the underlying FEngine method call.
+        """
+        if callable(getattr(FEngine,method)):
+            q = Queue.Queue()
+            for feng in self.fengs:
+                t = threading.Thread(target=_queue_instance_method, args=(q, feng.num, feng, method, args, kwargs))
+                t.daemon = True
+                t.start()
+            q.join()
+            rv = [None for feng in self.fengs]
+            for fn, feng in enumerate(self.fengs):
+                num, result = q.get()
+                rv[num] = result
+            return rv
+        else:
+            # no point in multithreading this
             return [getattr(feng,method) for feng in self.fengs]
 
     def all_xengs(self, method, *args, **kwargs):
@@ -286,7 +329,7 @@ class Engine(object):
     An engine requires a control register, whose value is tracked by this class
     to enable individual bits to be toggled.
     """
-    def __init__(self,roachhost,port=7147,boffile=None,ctrl_reg='ctrl',reg_suffix='',reg_prefix='',connect_passively=True):
+    def __init__(self,roachhost,port=7147,boffile=None,ctrl_reg='ctrl',reg_suffix='',reg_prefix='',connect_passively=True,num=0):
         """
         Instantiate an engine which lives on ROACH 'roachhost' who listens on port 'port'.
         All shared memory belonging to this engine has a name beginning with 'reg_prefix'
@@ -297,10 +340,13 @@ class Engine(object):
         If 'connect_passively' is True, the Engine instance will be created and its current control
         software status read, but no changes to the running firmware will be made.
         """
-        self.roachhost = roachhost
+        hostname = roachhost.host
+        self.roachhost = Roach(hostname, port)
+        time.sleep(0.01)
         self.ctrl_reg = ctrl_reg
         self.reg_suffix = reg_suffix
         self.reg_prefix = reg_prefix
+        self.num = num
         if connect_passively:
             self.get_ctrl_sw()
         else:
@@ -452,7 +498,7 @@ class FEngine(Engine):
     """
     A subclass of Engine, encapsulating F-Engine specific properties.
     """
-    def __init__(self, roachhost, ctrl_reg='ctrl', connect_passively=False, **kwargs):
+    def __init__(self, roachhost, ctrl_reg='ctrl', connect_passively=False, num=0, **kwargs):
         """
         Instantiate an F-Engine.
         roachhost: A katcp FpgaClient object for the host on which this engine is instantiated
@@ -471,7 +517,7 @@ class FEngine(Engine):
             self.inv_band = False
         else:
             raise ValueError('FEngine Error: band can only have values "low" or "high"')
-        Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng%s_'%str(self.adc), reg_suffix='', connect_passively=connect_passively)
+        Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng%s_'%str(self.adc), reg_suffix='', connect_passively=connect_passively, num=num)
         #Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng_', reg_suffix=str(self.adc), connect_passively=connect_passively)
         # set the default noise seed
         if not connect_passively:
@@ -662,10 +708,29 @@ class FEngine(Engine):
 
     def get_spectra(self):
         d = np.zeros(self.n_chans)
+        # arm snap blocks
+        # WARNING: we can't gaurantee that they all trigger off the same pulse
         for i in range(4):
-            s = self.snap('auto_snap_%d'%i, format='q')
+            self.write_int('auto_snap_%d_ctrl'%i,0)
+        for i in range(4):
+            self.write_int('auto_snap_%d_ctrl'%i,1)
+
+        # wait for data to come.
+        # NB: there is no timeout condition
+        done = False
+        while not done:
+            status = self.read_int('auto_snap_0_status')
+            done = not bool(status & (1<<31))
+            nbytes = status & (2**31 - 1)
+            time.sleep(0.01)
+
+        # grab data
+        for i in range(4):
+            s = np.array(struct.unpack('>%dq'%(nbytes/8), self.read('auto_snap_%d_bram'%i, nbytes)))
+            #s = self.snap('auto_snap_%d'%i, format='q')
             d[2*i::8] = s[0::2]
             d[2*i + 1::8] = s[1::2]
+
         d /= float(self.fft_power_acc_len)
         d /= 2**34
         return d
@@ -676,7 +741,7 @@ class XEngine(Engine):
     """
     A subclass of Engine, encapsulating X-Engine specific properties
     """
-    def __init__(self,roachhost,ctrl_reg='ctrl',id=0,band='low',chans=1024,n_ants=8, acc_len=1024, connect_passively=True):
+    def __init__(self,roachhost,ctrl_reg='ctrl',id=0,band='low',chans=1024,n_ants=8, acc_len=1024, connect_passively=True, num=0):
         """
         Instantiate a new X-engine.
         roachhost: The hostname of the ROACH on which this Engine lives
@@ -688,7 +753,7 @@ class XEngine(Engine):
         connect_passively: True if you want to instantiate an engine without modifying it's
         current running state. False if you want to reinitialise the control software of this engine.
         """
-        Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg,connect_passively=connect_passively,reg_prefix='xeng_')
+        Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg,connect_passively=connect_passively,reg_prefix='xeng_', num=num)
         self.id = id
         self.chans=1024
         self.n_ants = n_ants
