@@ -15,5 +15,5 @@ if not os.path.exists(config_file):
     print 'Config file does not exist!'
     exit()
 
-config_redis.write_config_to_redis(config_file)
+config_redis.write_config_to_redis(os.path.abspath(config_file))
 
