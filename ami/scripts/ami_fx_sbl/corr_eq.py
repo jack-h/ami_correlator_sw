@@ -53,7 +53,7 @@ if __name__ == '__main__':
         config_file = args[0]
 
     # initialise connection to correlator
-    corr = AMI.AmiSbl(config_file=config_file, verbose=True, passive=True)
+    corr = AMI.AmiSbl(config_file=config_file, passive=True)
     time.sleep(0.1)
 
     # load the existing coefficients

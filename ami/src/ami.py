@@ -1,19 +1,18 @@
 import os
-import corr.katcp_wrapper as katcp
-import adc5g as adc
 import numpy as np
 import time
 import struct
-import configparser
 import yaml
-from termcolor import colored
 import helpers
-import def_fstatus
-import cPickle as pickle
 import redis
 import config_redis
 import threading
 import Queue
+import logging
+import roach
+import engines
+
+logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
 
 def _queue_instance_method(q, num, inst, method, args, kwargs):
     '''
@@ -32,7 +31,7 @@ class AmiDC(object):
     This class provides an interface to the correlator, using a config file
     for hardware set up.
     """
-    def __init__(self, config_file=None, verbose=0, passive=True, skip_prog=True):
+    def __init__(self, config_file=None, passive=True, skip_prog=True, logger=logger):
         """
         Instantiate a correlator object. Pass a config file for custom configurations,
         otherwise the AMI_DC_CONF environment variable will be used as the config file
@@ -42,7 +41,8 @@ class AmiDC(object):
         but no changes will be made to any hardware set up. If passive is False,
         all FPGAs will be reprogrammed.
         """
-        self.verbose = verbose
+        self._logger = logger
+
         self.redis_host = config_redis.JsonRedis('ami_redis_host')
         if config_file is None:
             self.config = yaml.load(self.redis_host.hget('config', 'conf'))
@@ -51,10 +51,11 @@ class AmiDC(object):
             config_file = '%s:%s'%(host, fn)
         else:
             self.config = yaml.load(config_file)
-        self.vprint("Building AmiDC with config file %s"%config_file)
-        self.vprint("parsing config file")
+
+        self._logger.info("Building AmiDC with config file %s"%config_file)
+        self._logger.info("parsing config file")
         self.parse_config_file()
-        self.vprint("connecting to roaches")
+        self._logger.info("connecting to roaches")
         self.connect_to_roaches()
         time.sleep(0.1)
 
@@ -69,13 +70,6 @@ class AmiDC(object):
         else:
             self.program_all()
 
-    def vprint(self,message):
-        """
-        Print a message is self.verbose is True. To be replaced by logging.
-        """
-        if self.verbose:
-            print message
-
     def arm_sync(self, send_sync=False):
         """
         Arms all F engines, records anticipated sync time in config file. Returns the UTC time at which
@@ -84,6 +78,7 @@ class AmiDC(object):
         """
         #wait for within 100ms of a half-second, then send out the arm signal.
         #TODO This code is ripped from medicina. Is it even right?
+        self._logger.info('Issuing F-Engine arm')
         ready=0
         while not ready:
             ready=((int(time.time()*10+5)%10)==0)
@@ -97,13 +92,14 @@ class AmiDC(object):
         return self.sync_time
 
     def load_sync(self):
-        """Determines if a pickle file with the sync_time exists, returns that value else return 0"""
+        """Determines if a sync_time exists, returns that value else return 0"""
         t = self.redis_host.get('sync_time')
         if t is None:
-            print "No previous Sync Time found, defaulting to 0 seconds since the Unix Epoch"
+            self._logger.warning("No previous Sync Time found, defaulting to 0 seconds since the Unix Epoch")
             self.sync_time = 0
         else:
             self.sync_time = t
+            self._logger.info('sync time is %d (%s)'%(self.sync_time, time.ctime(self.sync_time)))
         return self.sync_time
 
 
@@ -136,7 +132,7 @@ class AmiDC(object):
         #array config file
         self.array_cfile = self.config['PostProcessing']['layout']
         # some debugging / info
-        self.vprint("ROACHes are %r"%self.roaches)
+        self._logger.info("ROACHes are %r"%self.roaches)
 
 
     def connect_to_roaches(self):
@@ -149,9 +145,12 @@ class AmiDC(object):
         self.fpgas = {}
         connected = {}
         for rn,roachhost in enumerate(self.roaches):
-            self.vprint("Connecting to ROACH %d, %s"%(rn,roachhost))
-            self.fpgas[roachhost] = Roach(roachhost,boffile=self.c_global['boffile'])
+            self._logger.info("Connecting to ROACH %d, %s"%(rn,roachhost))
+            self.fpgas[roachhost] = roach.Roach(roachhost,boffile=self.c_global['boffile'])
+            time.sleep(0.01)
             connected[roachhost] = self.fpgas[roachhost].is_connected()
+            if not connected[roachhost]:
+                self._logger.error('Could not connect to roachhost: %s'%roachhost)
         return connected
 
     def initialise_f_engines(self,passive=False):
@@ -167,10 +166,12 @@ class AmiDC(object):
             for key in self.config['FEngine'].keys():
                 if key not in feng_attrs.keys():
                     feng_attrs[key] = self.config['FEngine'][key]
-            self.fengs.append(FEngine(self.fpgas[feng['host']], 
+            self._logger.info('Constructing F-engine %d (roach: %s, ant: %d, band: %s)'%(fn, feng['host'], feng['ant'], feng['band']))
+            self.fengs.append(engines.FEngine(self.fpgas[feng['host']], 
                                       connect_passively=passive,
                                       num=fn, **feng_attrs))
         self.n_fengs = len(self.fengs)
+        self._logger.info('%d F-engines constructed'%self.n_fengs)
 
     def initialise_x_engines(self,passive=False):
         """
@@ -179,8 +180,10 @@ class AmiDC(object):
         """
         self.xengs = []
         for xn, xeng in enumerate(self.config['XEngine']['nodes']):
-            self.xengs.append(XEngine(self.fpgas[xeng['host']],'ctrl',band=xeng['band'],n_ants=self.n_ants,chans=self.config['XEngine']['n_chans'], connect_passively=passive, acc_len=self.acc_len, num=xn))
+            self._logger.info('Constructing X-engine %d (roach: %s)'%(xn, xeng['host']))
+            self.xengs.append(engines.XEngine(self.fpgas[xeng['host']],'ctrl',band=xeng['band'],n_ants=self.n_ants,chans=self.config['XEngine']['n_chans'], connect_passively=passive, acc_len=self.acc_len, num=xn))
         self.n_xengs = len(self.xengs)
+        self._logger.info('%d X-engines constructed'%self.n_xengs)
 
     def all_fengs(self, method, *args, **kwargs):
         """
@@ -190,7 +193,8 @@ class AmiDC(object):
         will be returned as a list (one entry for each F-Engine). Otherwise the
         return value is that of the underlying FEngine method call.
         """
-        if callable(getattr(FEngine,method)):
+        self._logger.debug('Calling method %s against all F-engines in single-thread mode'%method)
+        if callable(getattr(engines.FEngine,method)):
             return [getattr(feng, method)(*args, **kwargs) for feng in self.fengs]
         else:
             # no point in multithreading this
@@ -208,13 +212,16 @@ class AmiDC(object):
         will be returned as a list (one entry for each F-Engine). Otherwise the
         return value is that of the underlying FEngine method call.
         """
-        if callable(getattr(FEngine,method)):
+        self._logger.debug('Calling method %s against all F-engines in multi-thread mode'%method)
+        if callable(getattr(engines.FEngine,method)):
             q = Queue.Queue()
             for feng in self.fengs:
                 t = threading.Thread(target=_queue_instance_method, args=(q, feng.num, feng, method, args, kwargs))
                 t.daemon = True
                 t.start()
+            self._logger.debug('Threads joining')
             q.join()
+            self._logger.debug('Threads joined')
             rv = [None for feng in self.fengs]
             for fn, feng in enumerate(self.fengs):
                 num, result = q.get()
@@ -232,7 +239,8 @@ class AmiDC(object):
         will be returned as a list (one entry for each X-Engine). Otherwise the
         return value is that of the underlying XEngine method call.
         """
-        if callable(getattr(XEngine,method)):
+        self._logger.debug('Calling method %s against all X-engines in single-thread mode'%method)
+        if callable(getattr(engines.XEngine,method)):
             return [getattr(xeng,method)(*args, **kwargs) for xeng in self.xengs]
         else:
             return [getattr(xeng,method) for xeng in self.xengs]
@@ -247,7 +255,8 @@ class AmiDC(object):
         ROACH instances subclass FpgaClient, so you can call any of their methods
         here.
         """
-        if callable(getattr(Roach,method)):
+        self._logger.debug('Calling method %s against all ROACHes in single-thread mode'%method)
+        if callable(getattr(roach.Roach,method)):
             return [getattr(fpga, method)(*args, **kwargs) for fpgas in self.fpgas.values()]
         else:
             return [getattr(fpga,method) for fpga in self.fpgas.values()]
@@ -261,550 +270,28 @@ class AmiDC(object):
         manually.)
         """
         for roach in self.fpgas.values():
-            self.vprint("Programming ROACH %s with boffile %s"%(roach.host,roach.boffile))
+            self._logger.info("Programming ROACH %s with boffile %s"%(roach.host,roach.boffile))
             roach.safe_prog()
         if reinitialise:
             # reprogramming messes with ctrl_sw, etc, so clean out the engine lists
+            self._logger.info("Re-initializing engines")
             self.initialise_f_engines(passive=False)
             self.initialise_x_engines(passive=False)
         else:
+            self._logger.warning("Not re-initializing engines. Danger of sw/fw desync")
             self.fengs = []
             self.xengs = []
         for fn,feng in enumerate(self.fengs):
-            feng.calibrate_adc(verbosity=int(self.verbose))
+            feng.calibrate_adc()
     def get_array_config(self):
         pass
         
 
-class Roach(katcp.FpgaClient):
-    '''
-    A minor expansion on the FpgaClient class adds a few methods.
-    '''
-    def __init__(self, roachhost, port=7147, boffile=None):
-        katcp.FpgaClient.__init__(self,roachhost, port)
-        self.boffile = boffile
-    def snap(self,name,format='L',**kwargs):
-        """
-        A wrapper for snapshot_get(name, **kwargs), which decodes data into a numpy array, based on the format argument.
-        Big endianness is assumped, so only pass the format character. (i.e., 'L' for unsigned 32 bit, etc).
-        See the python struct manual for details of available formats.
-        """
-        n_bytes = struct.calcsize('=%s'%format)
-        d = self.snapshot_get(name, **kwargs)
-        return np.array(struct.unpack('>%d%s'%(d['length']/n_bytes,format),d['data']))
-    def safe_prog(self, check_clock=True):
-        """
-        A wrapper for the FpgaClient progdev method.
-        This method checks the target boffile is available before attempting to program, and clears
-        the FPGA before programming. A test write to the sys_scratchpad register is performed after programming.
-        If check_clock=True, the FPGA clock rate is estimated via katcp and returned in MHz.
-        """
-        if self.boffile not in self.listbof():
-            raise RuntimeError("boffile %s not available on ROACH %s"%(self.boffile,self.host))
-        self.progdev('')
-        time.sleep(0.1)
-        self.progdev(self.boffile)
-        time.sleep(0.1)
-        # write_int automatically does a read check. The following call will fail
-        # if the roach hasn't programmed properly
-        self.write_int('sys_scratchpad',0xdeadbeef)
-        if check_clock:
-            return self.est_brd_clk()
-        else:
-            return None
-    def set_boffile(self,boffile):
-        """
-        Set the self.boffile attribute, which is used in safe_prog calls.
-        """
-        self.boffile=boffile
-        
-
-
-class Engine(object):
-    """
-    A class for F/X engines (or some other kind) which live in ROACH firmware.
-    The fundamental assumption is that where multiple engines exist on a ROACH,
-    each has a unique prefix/suffix to their register names. (Eg, the registers
-    all live in some unique subsystem.
-    An engine requires a control register, whose value is tracked by this class
-    to enable individual bits to be toggled.
-    """
-    def __init__(self,roachhost,port=7147,boffile=None,ctrl_reg='ctrl',reg_suffix='',reg_prefix='',connect_passively=True,num=0):
-        """
-        Instantiate an engine which lives on ROACH 'roachhost' who listens on port 'port'.
-        All shared memory belonging to this engine has a name beginning with 'reg_prefix'
-        and ending in 'reg_suffix'. At least one control register named 'ctrl_reg' (plus pre/suffixes)
-        should exist. After configuring these you can write to registers without
-        these additions to the register names, allowing multiple engines to live on the same
-        ROACH boards transparently.
-        If 'connect_passively' is True, the Engine instance will be created and its current control
-        software status read, but no changes to the running firmware will be made.
-        """
-        hostname = roachhost.host
-        self.roachhost = Roach(hostname, port)
-        time.sleep(0.01)
-        self.ctrl_reg = ctrl_reg
-        self.reg_suffix = reg_suffix
-        self.reg_prefix = reg_prefix
-        self.num = num
-        if connect_passively:
-            self.get_ctrl_sw()
-        else:
-            self.initialise_ctrl_sw()
-
-    def initialise_ctrl_sw(self):
-        """Initialises the control software register to zero."""
-        self.ctrl_sw=0
-        self.write_ctrl_sw()
-
-    def write_ctrl_sw(self):
-        """
-        Write the current value of the ctrl_sw attribute to the host FPGAs control register
-        """
-        self.write_int(self.ctrl_reg,self.ctrl_sw)
-
-    def ctrl_sw_edge(self, bit):
-        """
-        Trigger an edge on a given bit of the control software reg.
-        I.e., write 0, then 1, then 0
-        """
-        self.set_ctrl_sw_bits(bit,bit,0)
-        self.set_ctrl_sw_bits(bit,bit,1)
-        self.set_ctrl_sw_bits(bit,bit,0)
-     
-    def set_ctrl_sw_bits(self, lsb, msb, val):
-        """
-        Set bits lsb:msb of the control register to value 'val'.
-        Other bits are maintained by the instance, which tracks the current values of the register.
-        """
-        num_bits = msb-lsb+1
-        if val > (2**num_bits - 1):
-            print 'ctrl_sw MSB:', msb
-            print 'ctrl_sw LSB:', lsb
-            print 'ctrl_sw Value:', val
-            raise ValueError("ERROR: Attempting to write value to ctrl_sw which exceeds available bit width")
-        # Create a mask which has value 0 over the bits to be changed                                     
-        mask = (2**32-1) - ((2**num_bits - 1) << lsb)
-        # Remove the current value stored in the ctrl_sw bits to be changed
-        self.ctrl_sw = self.ctrl_sw & mask
-        # Insert the new value
-        self.ctrl_sw = self.ctrl_sw + (val << lsb)
-        # Write                                                                                           
-        self.write_ctrl_sw()
-        
-    def get_ctrl_sw(self):
-        """
-        Updates the ctrl_sw attribute with the current value of the ctrl_sw register.
-        Useful when you are instantiating an engine but you don't want to reset
-        its control register to zero.
-        """
-        self.ctrl_sw = self.read_uint(self.ctrl_reg)
-        return self.ctrl_sw
-
-    def expand_name(self,name=''):
-        """
-        Expand a register name with the engines string prefix/suffix
-        to distinguish between multiple engines
-        on the same roach board
-        """
-        return self.reg_prefix + name + self.reg_suffix
-
-    def contract_name(self,name=''):
-        """
-        Strip off the suffix/prefix of a register with a given name.
-        Useful if you want to get a list of registers present in an engine
-        from a listdev() call to the engines host ROACH.
-        """
-        return name.rstrip(self.reg_suffix).lstrip(self.reg_prefix)
-
-    def write_int(self, dev_name, integer, *args, **kwargs):
-        """
-        Write an integer to an engine's register names 'dev_name'.
-        This is achieved by calling write_int on the Engine's host ROACH
-        after expanding the register name with any suffix/prefix. Optional
-        arguments are passed down to the write_int call.
-        """
-        self.roachhost.write_int(self.expand_name(dev_name), integer, **kwargs)
-
-    def read_int(self, dev_name, *args, **kwargs):
-        """
-        Read an integer from an engine's register names 'dev_name'.
-        This is achieved by calling read_int on the Engine's host ROACH
-        after expanding the register name with any suffix/prefix. Optional
-        arguments are passed down to the read_int call.
-        """
-        return self.roachhost.read_int(self.expand_name(dev_name), **kwargs)
-
-    def read_uint(self, dev_name, *args, **kwargs):
-        """
-        Read an unsigned integer from an engine's register names 'dev_name'.
-        This is achieved by calling read_uint on the Engine's host ROACH
-        after expanding the register name with any suffix/prefix. Optional
-        arguments are passed down to the read_uint call.
-        """
-        return self.roachhost.read_uint(self.expand_name(dev_name), **kwargs)
-
-    def read(self, dev_name, size, *args, **kwargs):
-        """
-        Read binary data from an engine's register names 'dev_name'.
-        This is achieved by calling read on the Engine's host ROACH
-        after expanding the register name with any suffix/prefix. Optional
-        arguments are passed down to the read call.
-        """
-        return self.roachhost.read(self.expand_name(dev_name), size, **kwargs)
-        
-    def write(self, dev_name, data, *args, **kwargs):
-        """
-        Read binary data from an engine's register names 'dev_name'.
-        This is achieved by calling read on the Engine's host ROACH
-        after expanding the register name with any suffix/prefix. Optional
-        arguments are passed down to the read call.
-        """
-        self.roachhost.write(self.expand_name(dev_name), data, **kwargs)
-    
-    def snap(self, dev_name, **kwargs):
-        """
-        Call snap on an engine's snap block named 'dev_name'.
-        after expanding the register name with any suffix/prefix. Optional
-        arguments are passed down to the snap call.
-        """
-        return self.roachhost.snap(self.expand_name(dev_name), **kwargs)
-
-    def snapshot_get(self, dev_name, **kwargs):
-        """
-        Call snapshot_get on an engine's snap block named 'dev_name'.
-        after expanding the register name with any suffix/prefix. Optional
-        arguments are passed down to the snapshot_get call.
-        """
-        return self.roachhost.snapshot_get(self.expand_name(dev_name), **kwargs)
-
-    def listdev(self):
-        """
-        Return a list of registers associated with an Engine instance.
-        This is achieved by calling listdev() on the Engine's host ROACH,
-        and then stripping off prefix/suffixes which are unique to this
-        particular engine instance.
-        """
-        dev_list = self.roachhost.listdev()
-        dev_list.sort() #alphebetize
-        #find the valid devices, which are those which start with the prefix and end with the suffix
-        valid_list = []
-        for dev in dev_list:
-            if dev.startswith(self.reg_prefix) and dev.endswith(self.reg_suffix):
-                valid_list.append(self.contract_name(dev))
-        return valid_list
-
-class FEngine(Engine):
-    """
-    A subclass of Engine, encapsulating F-Engine specific properties.
-    """
-    def __init__(self, roachhost, ctrl_reg='ctrl', connect_passively=False, num=0, **kwargs):
-        """
-        Instantiate an F-Engine.
-        roachhost: A katcp FpgaClient object for the host on which this engine is instantiated
-        ctrl_reg: The name of the control register of this engine
-        connect_passively: True if you want to instantiate an engine without modifying it's
-        current running state. False if you want to reinitialise the control software of this engine.
-        config: A dictionary of parameters for this fengine
-        """
-        # attributize dictionary
-        for key in kwargs.keys():
-            self.__setattr__(key, kwargs[key])
-
-        if self.band == 'low':
-            self.inv_band = True
-        elif self.band == 'high':
-            self.inv_band = False
-        else:
-            raise ValueError('FEngine Error: band can only have values "low" or "high"')
-        Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng%s_'%str(self.adc), reg_suffix='', connect_passively=connect_passively, num=num)
-        #Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng_', reg_suffix=str(self.adc), connect_passively=connect_passively)
-        # set the default noise seed
-        if not connect_passively:
-            self.set_adc_noise_tvg_seed()
-            self.phase_switch_enable(self.phase_switch)
-            self.noise_switch_enable(True)
-            self.set_adc_acc_len()
-            self.set_fft_acc_len()
-
-    def config_get(self, key):
-        if key in self.config.keys():
-            return self.config[key]
-        elif key in self.global_config.keys():
-            return self.global_config[key]
-        else:
-            raise KeyError('Key %s not in local or global configs!'%key)
-
-    def set_fft_shift(self,shift):
-        """
-        Write the fft_shift value for this engine
-        """
-        self.write_int('fft_shift',shift)
-    def gen_freq_scale(self):
-        """
-        Generate the frequency scale corresponding fo the frequencies of each
-        channel produced by this engine (in the order they emerge from the engine's
-        FFT. Useful for plotting.
-        """
-        band = np.arange(0,self.adc_clk/2.,self.adc_clk/2./self.n_chans)
-        if self.band == 'low':
-           rf_band = self.lo_freq - band
-        else:
-           rf_band = self.lo_freq + band
-        return rf_band
-    def set_EQ():
-        """
-        Set the engine EQ coefficients
-        """
-        raise NotImplementedError
-    def set_coarse_delay(self,delay):
-        """
-        Set the engine's coarse delay (in FPGA clock cycles)
-        """
-        self.write_int('coarse_delay',delay)
-    def reset(self):
-        """
-        reset the engine using the control register
-        """
-        self.ctrl_sw_edge(0)
-    def man_sync(self):
-        """
-        Send a manual sync to the engine using the control register
-        """
-        self.ctrl_sw_edge(1)
-    def arm_trigger(self):
-        """
-        Arm the sync generator using the control register
-        """
-        self.ctrl_sw_edge(2)
-    def clr_status(self):
-        """
-        Clear the status flags, using the control register
-        """
-        self.ctrl_sw_edge(3)
-    def clr_adc_bad(self):
-        """
-        Clear the adc clock bad flag, using the control register
-        """
-        self.ctrl_sw_edge(4)
-    def gbe_rst(self):
-        """
-        Reset the engine's 10GbE outputs, using the control register
-        """
-        self.ctrl_sw_edge(8)
-    def gbe_enable(self,val):
-        """
-        Set the engine's 10GbE output enable state to bool(val), using the control regiser
-        """
-        self.set_ctrl_sw_bits(9,9,int(val))
-    def fancy_en(self,val):
-        """
-        Set the fancy led enable mode to bool(val)
-        """
-        self.set_ctrl_sw_bits(12,12,int(val))
-    def adc_protect_disable(self,val):
-        """
-        Turn off adc protection if val=True. Else turn on.
-        """
-        self.set_ctrl_sw_bits(13,13,int(val))
-    def tvg_en(self,corner_turn=False,packetiser=False,fd_fs=False,adc=False):
-        """
-        Turn on any test vector generators whose values are 'True'
-        Turn off any test vector generators whose values are 'False'
-        """
-        self.set_ctrl_sw_bits(17,17,int(corner_turn))
-        self.set_ctrl_sw_bits(18,18,int(packetiser))
-        self.set_ctrl_sw_bits(19,19,int(fd_fs))
-        self.set_ctrl_sw_bits(20,20,int(adc))
-        self.ctrl_sw_edge(16)
-    def set_adc_noise_tvg_seed(self, seed=0xdeadbeef):
-        """
-        Set the seed for the adc test vector generator.
-        Default is 0xdeadbeef.
-        """
-        self.write_int('noise_seed', seed)
-    def phase_switch_enable(self,val,verbose=False):
-        """
-        Set the phase switch enable state to bool(val)
-        """
-        if verbose:
-            print 'Setting phase switch of ant %d (adc %d) band %s:'%(self.ant, self.adc, self.band), val
-        self.set_ctrl_sw_bits(21,21,int(val))
-    def noise_switch_enable(self, val):
-        """
-        Enable or disable the noise switching circuitry
-        """
-        self.set_ctrl_sw_bits(22,22,int(val))
-    def set_adc_acc_len(self, val=None):
-        if val is None:
-            self.write_int('adc_acc_len', self.adc_power_acc_len >> (4 + 8))
-        else:
-            self.write_int('adc_acc_len', val >> (4 + 8))
-    def set_fft_acc_len(self, val=None):
-        if 'auto_acc_len' in self.listdev():
-            if val is None:
-                self.write_int('auto_acc_len', self.fft_power_acc_len)
-            else:
-                self.write_int('auto_acc_len', val)
-        else:
-            if val is None:
-                self.write_int('auto_acc_len1', self.fft_power_acc_len)
-            else:
-                self.write_int('auto_acc_len1', val)
-    def set_tge_outputs():
-        """
-        Configure engine's 10GbE outputs.
-        Not yet implemented
-        """
-        raise NotImplementedError()
-    def get_status(self):
-        """
-        return the status flags defined in the def_fstatus file
-        """
-        val = self.read_int('status')
-        rv = {}
-        for key in def_fstatus.status.keys():
-            item = def_fstatus.status[key]
-            rv[key] = helpers.slice(val,item['start_bit'],width=item['width'])
-        return rv
-    def print_status(self):
-        """
-        Print the status flags defined in the def_fstatus file, highlighting
-        and 'bad' flags.
-        """
-        print "STATUS of F-Engine %d (Antenna %d %s band) on ROACH %s"%(self.adc,self.ant,self.band,self.roachhost.host)
-        vals = self.get_status()
-        for key in vals.keys():
-            if vals[key] == def_fstatus.status[key]['default']:
-                print colored('%15s : %r'%(key,vals[key]), 'green')
-            else:
-                print colored('%15s : %r'%(key,vals[key]), 'red', attrs=['bold'])
-
-
-    def calibrate_adc(self,verbosity=2):
-        """
-        Calibrate the ADC associated with this engine, using the adc5g.calibrate_mmcm_phase method.
-        """
-        # The phase switches must be off for calibration
-        self.phase_switch_enable(0)
-        adc.calibrate_all_delays(self.roachhost,self.adc,snaps=[self.expand_name('snapshot_adc')],verbosity=verbosity)
-        # Set back to user-defined defaults
-        self.phase_switch_enable(self.phase_switch)
-        #opt,glitches =  adc.calibrate_mmcm_phase(self.roachhost,self.adc,[self.expand_name('snapshot_adc')])
-        #print opt
-        #print glitches
-    def get_adc_power(self):
-        init_val = self.read_int('adc_sum_sq0')
-        while (True):
-            v = self.read_int('adc_sum_sq0')
-            #print v
-            if v != init_val:
-                break
-            time.sleep(0.01)
-        v += (self.read_int('adc_sum_sq1') << 32)
-        if v > (2**63 - 1):
-            v -= 2**64
-        return v / (2**7 * 256.0 * 16.0 * (self.adc_power_acc_len >> (4 + 8)))
-
-    def get_spectra(self, autoflip=False):
-        d = np.zeros(self.n_chans)
-        # arm snap blocks
-        # WARNING: we can't gaurantee that they all trigger off the same pulse
-        for i in range(4):
-            self.write_int('auto_snap_%d_ctrl'%i,0)
-        for i in range(4):
-            self.write_int('auto_snap_%d_ctrl'%i,1)
-
-        # wait for data to come.
-        # NB: there is no timeout condition
-        done = False
-        while not done:
-            status = self.read_int('auto_snap_0_status')
-            done = not bool(status & (1<<31))
-            nbytes = status & (2**31 - 1)
-            time.sleep(0.01)
-
-        # grab data
-        for i in range(4):
-            s = np.array(struct.unpack('>%dq'%(nbytes/8), self.read('auto_snap_%d_bram'%i, nbytes)))
-            #s = self.snap('auto_snap_%d'%i, format='q')
-            d[2*i::8] = s[0::2]
-            d[2*i + 1::8] = s[1::2]
-
-        d /= float(self.fft_power_acc_len)
-        d /= 2**34
-        if autoflip and (self.band == 'high'):
-            d = d[::-1]
-
-        return d
-
-
-
-class XEngine(Engine):
-    """
-    A subclass of Engine, encapsulating X-Engine specific properties
-    """
-    def __init__(self,roachhost,ctrl_reg='ctrl',id=0,band='low',chans=1024,n_ants=8, acc_len=1024, connect_passively=True, num=0):
-        """
-        Instantiate a new X-engine.
-        roachhost: The hostname of the ROACH on which this Engine lives
-        ctrl_reg: The name of the control register of this engine
-        id: The id of this engine, if multiple are present on a ROACH
-        chans: The number of channels processed by this X-engine
-        n_ants: The number of antennas processed by this X-engine
-        acc_len: The accumulation length of this X-engine
-        connect_passively: True if you want to instantiate an engine without modifying it's
-        current running state. False if you want to reinitialise the control software of this engine.
-        """
-        Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg,connect_passively=connect_passively,reg_prefix='xeng_', num=num)
-        self.id = id
-        self.chans=1024
-        self.n_ants = n_ants
-        self.acc_len = acc_len
-        self.band = band
-        if not connect_passively:
-            self.set_acc_len()
-
-    def reset():
-        """
-        Reset this engine
-        """
-        pass
-    def set_acc_len(self,acc_len=None):
-        """
-        Set the accumulation length of this engine, using either the
-        current value of the acc_len attribute, or a new value if supplied
-        """
-        if acc_len is not None:
-            self.acc_len = acc_len
-        self.write_int('acc_len',self.acc_len)
-        pass
-    def set_output_addr():
-        """
-        Set address of output data stream
-        """
-        pass
-    def set_tge_inputs():
-        """
-        Configure input 10GbE data streams
-        """
-        pass
 
 class AmiSbl(AmiDC):
     """
     A subclass of AmiDC for the single-ROACH, single-baseline correlator
     """
-    def __init__(self,config_file=None,verbose=False,passive=True,skip_prog=True):
-        """
-        Instantiate a correlator object. Pass a config file for custom configurations,
-        otherwise the AMI_DC_CONF environment variable will be used as the config file
-        path.
-        If passive is True (the default), connections to F/X engines will be initialised,
-        and current control software state will be obtained (including sync time),
-        but no changes will be made to any hardware set up. If passive is False,
-        all FPGAs will be reprogrammed.
-        """
-        AmiDC.__init__(self,config_file=config_file,verbose=verbose,passive=passive,skip_prog=skip_prog)
     def snap_corr(self,wait=True,combine_complex=True):
         """
         Snap new correlations from bram.
@@ -876,11 +363,13 @@ class AmiSbl(AmiDC):
         If no state is given, set to the default enabled
         state from the config file.
         '''
-        for feng in self.fengs:
+        for fn, feng in enumerate(self.fengs):
             if override is not None:
-                feng.phase_switch_enable(override, verbose=True)
+                self._logger.warning('Overriding phase switch enable state of feng %d to %s'%(fn, override))
+                feng.phase_switch_enable(override)
             else:
-                feng.phase_switch_enable(feng.phase_switch, verbose=True)
+                self._logger.info('Setting phase switch enable state of feng %d to %s'%(fn, feng.phase_switch))
+                feng.phase_switch_enable(feng.phase_switch)
 
     def mcnt2time(self,mcnt):
         """

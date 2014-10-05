@@ -3,6 +3,7 @@ import socket
 import time
 import yaml
 import json
+import logging
 
 def write_config_to_redis(configfile):
     with open(configfile, 'r') as fh:
@@ -42,5 +43,27 @@ class JsonRedis(redis.Redis):
         redis.Redis.set(self, name+':last_update_time', time.time())
         
 
+'''
+A Redis-based log handler from:
+http://charlesleifer.com/blog/using-redis-pub-sub-and-irc-for-error-logging-with-python/
+'''
+class RedisHandler(logging.Handler):
+    def __init__(self, channel, conn, *args, **kwargs):
+        logging.Handler.__init__(self, *args, **kwargs)
+        self.channel = channel
+        self.redis_conn = conn
+
+    def emit(self, record):
+        attributes = [
+            'name', 'msg', 'levelname', 'levelno', 'pathname', 'filename',
+            'module', 'lineno', 'funcName', 'created', 'msecs', 'relativeCreated',
+            'thread', 'threadName', 'process', 'processName',
+        ]
+        record_dict = dict((attr, getattr(record, attr)) for attr in attributes)
+        record_dict['formatted'] = self.format(record)
+        try:
+            self.redis_conn.publish(self.channel, json.dumps(record_dict))
+        except redis.RedisError:
+            pass
     
 

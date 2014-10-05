@@ -1,4 +1,8 @@
 import numpy as np
+import logging
+import logging.handlers
+import config_redis
+import sys
 
 def uint2int(d,bits,bp,complex=False):
     """
@@ -37,3 +41,34 @@ def slice(val,lsb,width=1):
         return bool(out)
     else:
         return out
+
+def add_default_log_handlers(logger, redishostname='ami_redis_host', fglevel=logging.INFO, bglevel=logging.INFO):
+    logger.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter('%(asctime)s - %(name)15s - %(levelname)s - %(message)s')
+
+    stream_handler = logging.StreamHandler(stream=sys.stdout)
+    stream_handler.setLevel(fglevel)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+
+    syslog_handler = logging.handlers.SysLogHandler(address='/dev/log')
+    syslog_handler.setLevel(bglevel)
+    syslog_handler.setFormatter(formatter)
+    logger.addHandler(syslog_handler)
+
+    redis_host = config_redis.JsonRedis(redishostname, socket_timeout=1)
+    try:
+        redis_host.ping()
+    except redis.ConnectionError:
+        logger.warn("Couldn't connect to redis server at %d"%redishostname)
+        return logger
+
+    redis_handler = config_redis.RedisHandler('log-channel', redis_host)
+    redis_handler.setLevel(bglevel)
+    redis_handler.setFormatter(formatter)
+    logger.addHandler(redis_handler)
+
+    logger.info("Logger %s created..."%logger.name)
+
+    return logger
