@@ -4,6 +4,7 @@ import def_fstatus
 import time, struct, logging
 import adc5g as adc
 import roach
+import numpy as np
 
 logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
 
