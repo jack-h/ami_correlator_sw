@@ -74,7 +74,7 @@ if __name__ == '__main__':
     print "Current RA,dec", ctrl.meta_data.ra, ctrl.meta_data.dec
     print "Current nsamp,HA", ctrl.meta_data.nsamp, ctrl.meta_data.ha_reqd
 
-    corr = AMI.AmiSbl(config_file=config_file, verbose=True, passive=True)
+    corr = AMI.AmiSbl(config_file=config_file, passive=True)
     time.sleep(0.1)
 
     xeng = corr.xengs[0]
