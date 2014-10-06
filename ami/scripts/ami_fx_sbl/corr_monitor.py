@@ -26,7 +26,7 @@ if __name__ == '__main__':
         config_file = args[0]
 
     # initialise connection to correlator
-    corr = AMI.AmiSbl(config_file=config_file, verbose=True, passive=True, skip_prog=True)
+    corr = AMI.AmiSbl(config_file=config_file, passive=True, skip_prog=True)
     time.sleep(0.1)
 
     # turn on the noise switch
