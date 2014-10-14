@@ -223,8 +223,13 @@ for fi, fname in enumerate(fnames):
     fh = h5py.File(fname, 'r')
     timestamps = fh.get('timestamp0')
     if opts.time is None:
-        time_index=range(len(timestamps))
-    else: time_index = convert_arg_range(opts.time)
+        max_time = (len(timestamps) // opts.sumtimes) * opts.sumtimes
+        time_index=range(max_time)
+    else:
+        time_index = convert_arg_range(opts.time)
+        n_times = ((time_index[-1] - time_index[0] + 1) // opts.sumtimes) * opts.sumtimes
+        time_index = range(time_index[0], time_index[0] + n_times)
+
     if decimate>1:
         time_index=time_index[::decimate]
     if fi==0:
@@ -256,8 +261,13 @@ for fi, fname in enumerate(fnames):
         else:
             m2,m1=map(int,opts.shape.split('_'))
         
-        if opts.chan_index == 'all': chan_index = range(0,fh.attrs.get('n_chans'))
-        else: chan_index = convert_arg_range(opts.chan_index)
+        if opts.chan_index == 'all':
+            max_chan = (fh.attrs.get('n_chans') // opts.sumchans) * opts.sumchans
+            chan_index = range(max_chan)
+        else:
+            chan_index = convert_arg_range(opts.chan_index)
+            n_chans = ((chan_index[-1] - chan_index[0] + 1) // opts.sumchans) * opts.sumchans
+            chan_index = range(chan_index[0], chan_index[0] + n_chans)
         if opts.freqaxis:
             freq_range = freq_range[chan_index].reshape(len(chan_index)//opts.sumchans, opts.sumchans).mean(axis=1)
         else:
@@ -285,7 +295,8 @@ for fi, fname in enumerate(fnames):
             dtemp = fh.get('noise_demod')[time_index][:,ant_index][:,:,chan_index]
             t = numpy.concatenate(t, fh.get('timestamp0')[time_index])
         else:
-            dtemp = fh.get('noise_demod')[time_index].reshape(len(time_index)//opts.sumtimes, opts.sumtimes, len(ant_index), fh.attrs.get('n_chans')).mean(axis=1)[:,ant_index][:,:,chan_index]
+            print (len(time_index)//opts.sumtimes, opts.sumtimes, len(ant_index), len(chan_index))
+            dtemp = fh.get('noise_demod')[time_index].reshape(len(time_index)//opts.sumtimes, opts.sumtimes, len(ant_index), len(chan_index)).mean(axis=1)[:,ant_index][:,:,chan_index]
             t = numpy.concatenate(t, fh.get('timestamp0')[time_index].reshape(len(time_index)//opts.sumtimes, opts.sumtimes).mean(axis=1))
 
         if opts.sumchans == 1:
