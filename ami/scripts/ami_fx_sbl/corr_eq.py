@@ -36,8 +36,8 @@ if __name__ == '__main__':
     p.set_description(__doc__)
     p.add_option('-N', '--samples', dest='samples', type='int', default=1,
         help='Number of snaps to average over. Default=1')
-    p.add_option('-t', '--targetpower', dest='targetpower', type='float', default=0.1,
-        help='Mean power target. Default:0.1')
+    p.add_option('-t', '--targetpower', dest='targetpower', type='float', default=0.04,
+        help='Mean power target. Default:0.04')
     p.add_option('-c', '--cutoff', dest='cutoff', type='float', default=10.,
         help='Set a cutoff level for <cutoff> EQ coefficients. Where power[channel] < (mean power / cutoff), EQ coefficients will be set to zero. Default: 10.0')
     p.add_option('--new', dest='new', action='store_true', default=False,
