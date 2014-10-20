@@ -12,18 +12,19 @@ import pylab
 import signal
 
 def write_data(writer, d, timestamp, meta, **kwargs):
-    for entry in meta.entries:
-       name = entry['name']
-       if name is not 'obs_name':
-           val = meta.__getattribute__(name)
-           try:
-               length = len(val)
-               data_type = type(val[0])
-           except TypeError:
-               length = 1
-               data_type = type(val)
-           #print name,val,data_type
-           writer.append_data(name, [length], val, data_type)
+    if meta is not None:
+        for entry in meta.entries:
+           name = entry['name']
+           if name is not 'obs_name':
+               val = meta.__getattribute__(name)
+               try:
+                   length = len(val)
+                   data_type = type(val[0])
+               except TypeError:
+                   length = 1
+                   data_type = type(val)
+               #print name,val,data_type
+               writer.append_data(name, [length], val, data_type)
     writer.append_data('xeng_raw0', d.shape, d, np.int64)
     writer.append_data('timestamp0', [1], timestamp, np.int64)
     for key, value in kwargs.iteritems():
@@ -35,7 +36,10 @@ def signal_handler(signum, frame):
     """
     print "Received kill signal %d. Closing files and exiting"%signum
     writer.close_file()
-    ctrl.close_sockets()
+    try:
+        ctrl.close_sockets()
+    except:
+       pass #this is poor form
     exit()
 
 
@@ -47,6 +51,8 @@ if __name__ == '__main__':
     p.set_description(__doc__)
     p.add_option('-t', '--test_tx', dest='test_tx',action='store_true', default=False, 
         help='Send tx test patterns, and don\'t bother writing data to file')
+    p.add_option('-n', '--nometa', dest='nometa',action='store_true', default=False, 
+        help='Use this option to ignore the connection to the ami control server')
 
     opts, args = p.parse_args(sys.argv[1:])
 
@@ -58,21 +64,22 @@ if __name__ == '__main__':
     writer = fw.H5Writer(config_file=config_file)
     writer.set_bl_order([[0,0],[1,1],[0,1]])
 
-    ctrl = control.AmiControlInterface(config_file=config_file)
-    ctrl.connect_sockets()
+    if not opts.nometa:
+        ctrl = control.AmiControlInterface(config_file=config_file)
+        ctrl.connect_sockets()
 
-    # first get some meta data, as this encodes the source name
-    # which we will use to name the output file
+        # first get some meta data, as this encodes the source name
+        # which we will use to name the output file
 
-    while (ctrl.try_recv() is None):
-        print "Waiting for meta data"
-        time.sleep(1)
+        while (ctrl.try_recv() is None):
+            print "Waiting for meta data"
+            time.sleep(1)
 
-    print "Got meta data"
-    print "Current status", ctrl.meta_data.obs_status
-    print "Current source", ctrl.meta_data.obs_name
-    print "Current RA,dec", ctrl.meta_data.ra, ctrl.meta_data.dec
-    print "Current nsamp,HA", ctrl.meta_data.nsamp, ctrl.meta_data.ha_reqd
+        print "Got meta data"
+        print "Current status", ctrl.meta_data.obs_status
+        print "Current source", ctrl.meta_data.obs_name
+        print "Current RA,dec", ctrl.meta_data.ra, ctrl.meta_data.dec
+        print "Current nsamp,HA", ctrl.meta_data.nsamp, ctrl.meta_data.ha_reqd
 
     corr = AMI.AmiSbl(config_file=config_file, passive=True)
     time.sleep(0.1)
@@ -90,31 +97,38 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     while(True):
-        if (ctrl.try_recv()==0):
-            print "received metadata with timestamp", ctrl.meta_data.timestamp
-            last_meta_timestamp = ctrl.meta_data.timestamp
-            receiver_enable = (ctrl.meta_data.obs_status==4)
-            if not receiver_enable:
-                print "OBS NOT ACTIVE. CLOSING FILES"
+        if not opts.nometa:
+            if (ctrl.try_recv()==0):
+                print "received metadata with timestamp", ctrl.meta_data.timestamp
+                last_meta_timestamp = ctrl.meta_data.timestamp
+                receiver_enable = (ctrl.meta_data.obs_status==4)
+                if not receiver_enable:
+                    print "OBS NOT ACTIVE. CLOSING FILES"
+                    #set current obs to none so the next valid obs will trigger a new file
+                    current_obs = None
+                    writer.close_file()
+                elif ctrl.meta_data.obs_name != current_obs:
+                    writer.close_file()
+                    fname = 'corr_%s_%d.h5'%(ctrl.meta_data.obs_name, ctrl.meta_data.timestamp)
+                    if not opts.test_tx:
+                        print "Starting a new file with name", fname
+                        writer.start_new_file(fname)
+                        writer.add_attr('obs_name',ctrl.meta_data.obs_name)
+                    current_obs = ctrl.meta_data.obs_name
+            if (time.time() - last_meta_timestamp) > 60*10:
+                print "10 minutes has elapsed since last valid meta timestamp"
+                print "Closing Files"
                 #set current obs to none so the next valid obs will trigger a new file
                 current_obs = None
                 writer.close_file()
-            elif ctrl.meta_data.obs_name != current_obs:
-                writer.close_file()
-                fname = 'corr_%s_%d.h5'%(ctrl.meta_data.obs_name, ctrl.meta_data.timestamp)
-                if not opts.test_tx:
-                    print "Starting a new file with name", fname
-                    writer.start_new_file(fname)
-                    writer.add_attr('obs_name',ctrl.meta_data.obs_name)
-                current_obs = ctrl.meta_data.obs_name
-        if (time.time() - last_meta_timestamp) > 60*10:
-            print "10 minutes has elapsed since last valid meta timestamp"
-            print "Closing Files"
-            #set current obs to none so the next valid obs will trigger a new file
-            current_obs = None
-            writer.close_file()
-            receiver_enable = False # disable data capture until new meta data arrives
-        if receiver_enable:
+                receiver_enable = False # disable data capture until new meta data arrives
+        else:
+            if current_obs is None:
+                fname = 'corr_TEST_%d.h5'%(time.time())
+                writer.start_new_file(fname)
+                current_obs = 'test'
+
+        if receiver_enable or opts.nometa:
             mcnt = xeng.read_uint('mcnt_lsb')
             if mcnt != mcnt_old:
                 mcnt_old = mcnt
@@ -150,16 +164,19 @@ if __name__ == '__main__':
                     #for datan,data in enumerate(txdata):
                     #    print "Sending data. Index %4d, %d"%(datan,data)
 
-                    if not opts.test_tx:
-                        ctrl.try_send(d['timestamp'],1,cnt,txdata)
-                        write_data(writer,datavec,d['timestamp'],ctrl.meta_data,noise_demod=noise_switched_data)
-                        #pylab.plot(helpers.dbs(np.abs(txdata)))
-                        #pylab.plot(np.abs(txdata))
-                        #pylab.show()
-                        #exit()
+                    if not opts.nometa:
+                        if not opts.test_tx:
+                            ctrl.try_send(d['timestamp'],1,cnt,txdata)
+                            write_data(writer,datavec,d['timestamp'],ctrl.meta_data,noise_demod=noise_switched_data)
+                            #pylab.plot(helpers.dbs(np.abs(txdata)))
+                            #pylab.plot(np.abs(txdata))
+                            #pylab.show()
+                            #exit()
+                        else:
+                            fake_data = np.arange(4096)+cnt
+                            ctrl.try_send(d['timestamp'],1,cnt,fake_data)
                     else:
-                        fake_data = np.arange(4096)+cnt
-                        ctrl.try_send(d['timestamp'],1,cnt,fake_data)
+                        write_data(writer,datavec,d['timestamp'],None,noise_demod=noise_switched_data)
                 else:
                     print "Failed to send because MCNT changed during snap"
         time.sleep(0.1)
