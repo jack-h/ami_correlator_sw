@@ -42,6 +42,8 @@ if __name__ == '__main__':
         help='Set a cutoff level for <cutoff> EQ coefficients. Where power[channel] < (mean power / cutoff), EQ coefficients will be set to zero. Default: 10.0')
     p.add_option('--new', dest='new', action='store_true', default=False,
         help='Use this flag to generate new coefficients. Otherwise, existing coefficients will be used unless they don\'t exist')
+    p.add_option('--same', dest='same', action='store_true', default=False,
+        help='Use this flag to load the coefficients from feng0 to all F-engines (can\'t be used in conjunction with --new)')
     p.add_option('-p', '--plot', dest='plot', action='store_true', default=False,
         help='Show plots. Default: False')
 
@@ -110,7 +112,11 @@ if __name__ == '__main__':
             coeffs['ANT%d_%s'%(feng.ant,feng.band)] = eq
 
         else:
-            eq = coeffs['ANT%d_%s'%(feng.ant,feng.band)]
+            if opts.same:
+                print 'Using feng0 coefficients'
+                eq = coeffs['ANT%d_%s'%(corr.fengs[0].ant,corr.fengs[0].band)]
+            else:
+                eq = coeffs['ANT%d_%s'%(feng.ant,feng.band)]
 
         eq_str = format_eq(eq,bits=16,bp=6)
         feng.write('eq', eq_str)
