@@ -31,7 +31,6 @@ if __name__ == '__main__':
 
     # turn on the noise switch
     a = corr.all_fengs_multithread('noise_switch_enable', True)
-    print corr.redis_host
 
     while(True):
         tic = time.time()
