@@ -201,9 +201,9 @@ class FEngine(Engine):
             self.__setattr__(key, kwargs[key])
 
         if self.band == 'low':
-            self.inv_band = True
-        elif self.band == 'high':
             self.inv_band = False
+        elif self.band == 'high':
+            self.inv_band = True
         else:
             raise ValueError('FEngine Error: band can only have values "low" or "high"')
         Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg, reg_prefix='feng%s_'%str(self.adc), reg_suffix='', connect_passively=connect_passively, num=num)
@@ -421,11 +421,30 @@ class FEngine(Engine):
 
         d /= float(self.fft_power_acc_len)
         d /= 2**34
-        if autoflip and (self.band == 'high'):
+        if autoflip and self.inv_band:
             d = d[::-1]
-
         return d
-
+            
+    def get_eq(self, redishost=None, autoflip=False, per_channel=False):
+        n_eq_coeffs = 2 * self.n_chans / self.eq_dec #2 for complex
+        n_bytes_per_coeff = struct.calcsize(self.eq_format)
+        n_bytes = n_bytes_per_coeff * n_eq_coeffs
+        n_bits_per_coeff = n_bytes*8
+        if redishost is not None:
+            d = redishost.get('ANT%d_%s'%(self.ant, self.band))
+        else:
+            d = uint2int(struct.unpack('>%d%s'%(self.n_eq_coeffs, self.eq_format), self.read('eq',n_bytes)), n_bits_per_coeff, self.eq_bp, complex=True)
+        if per_channel:
+            #expand the coeff array so we have one coeff per channel
+            out = np.zeros(self.n_chans, dtype=complex)
+            for i in range(self.eq_dec):
+                out[i::self.eq_dec] = d
+        else:
+            out = d
+        if autoflip and self.inv_band:
+            return out[::-1]
+        else:
+            return out
 
 
 class XEngine(Engine):

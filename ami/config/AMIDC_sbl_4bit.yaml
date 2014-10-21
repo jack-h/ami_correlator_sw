@@ -75,6 +75,9 @@ FEngine:
     fft_power_acc_len: 1220704
     adc_clk: 5000
     mix_freq: 9000
+    eq_dec: 2
+    eq_format: 'H'
+    eq_bp: 6
     
     nodes:
         - ant: 3

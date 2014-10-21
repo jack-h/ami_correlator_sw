@@ -31,15 +31,19 @@ if __name__ == '__main__':
 
     # turn on the noise switch
     a = corr.all_fengs_multithread('noise_switch_enable', True)
+    print corr.redis_host
 
     while(True):
         tic = time.time()
         spectra = corr.all_fengs_multithread('get_spectra', autoflip=True)
+        time.sleep(1)
+        eq = corr.all_fengs('get_eq', redishost=corr.redis_host, autoflip=True, per_channel=True)
         toc = time.time()
         print 'New data acquired in time:', toc - tic
         for fn, feng in enumerate(corr.fengs):
             key = 'STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band)
-            corr.redis_host.set(key, spectra[fn].tolist())
+            d = spectra[fn] * np.abs(eq[fn])**2
+            corr.redis_host.set(key, d.tolist())
         time.sleep(0.25)
         if not opts.monitor:
             break
