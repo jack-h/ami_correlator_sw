@@ -14,8 +14,8 @@ if __name__ == '__main__':
     p = OptionParser()
     p.set_usage('%prog [options] [CONFIG_FILE]')
     p.set_description(__doc__)
-    p.add_option('-p', '--plot', dest='plot', action='store_true', default=False,
-        help='Show plots. Default: False')
+    p.add_option('-p', '--plot', dest='plot', type='int', default=0,
+        help='Number of grabs to do before showing plots. Default = 0 = do not plot.')
     p.add_option('-m', '--monitor', dest='monitor', action='store_true', default=False,
         help='Monitor continuously')
 
@@ -33,10 +33,11 @@ if __name__ == '__main__':
     a = corr.all_fengs_multithread('noise_switch_enable', True)
     print corr.redis_host
 
+    grab_n = 0
+    x = np.zeros_like(corr.all_fengs_multithread('get_spectra', autoflip=True))
     while(True):
         tic = time.time()
         spectra = corr.all_fengs_multithread('get_spectra', autoflip=True)
-        time.sleep(1)
         eq = corr.all_fengs('get_eq', redishost=corr.redis_host, autoflip=True, per_channel=True)
         toc = time.time()
         print 'New data acquired in time:', toc - tic
@@ -44,7 +45,13 @@ if __name__ == '__main__':
             key = 'STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band)
             d = spectra[fn] * np.abs(eq[fn])**2
             corr.redis_host.set(key, d.tolist())
-        time.sleep(0.25)
+        print 'New monitor data sent at time', time.time()
+        if opts.plot != 0:
+            x += spectra * np.abs(eq)**2
+            grab_n += 1
+            if grab_n == opts.plot:
+                break
+
         if not opts.monitor:
             break
 
@@ -52,6 +59,6 @@ if __name__ == '__main__':
         pylab.figure(0)
         for fn, feng in enumerate(corr.fengs):
             pylab.subplot(2,2,fn+1)
-            pylab.plot(spectra[fn])
+            pylab.plot(x[fn])
 
         pylab.show()
