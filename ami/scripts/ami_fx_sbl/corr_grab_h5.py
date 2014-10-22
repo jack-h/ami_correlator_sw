@@ -150,7 +150,7 @@ if __name__ == '__main__':
                     datavec[:,1,0,1] = d['corr11']
                     datavec[:,2,0,1] = d['corr01'][0::2] #datavec[:,:,:,1] should be real
                     datavec[:,2,0,0] = d['corr01'][1::2] #datavec[:,:,:,0] should be imag
-                    print "got new correlator data with timestamp",d['timestamp']
+                    print "got new correlator data with timestamp %.4f at time %.4f"%(d['timestamp'], time.time())
 
                     txdata = np.array(d['corr01'][:], dtype=np.int32)
 
