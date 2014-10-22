@@ -1,9 +1,33 @@
 import numpy as np
 import logging
 import logging.handlers
-import config_redis
 import sys
+import redis
+import json
 
+'''
+A Redis-based log handler from:
+http://charlesleifer.com/blog/using-redis-pub-sub-and-irc-for-error-logging-with-python/
+'''
+class RedisHandler(logging.Handler):
+    def __init__(self, channel, conn, *args, **kwargs):
+        logging.Handler.__init__(self, *args, **kwargs)
+        self.channel = channel
+        self.redis_conn = conn
+
+    def emit(self, record):
+        attributes = [
+            'name', 'msg', 'levelname', 'levelno', 'pathname', 'filename',
+            'module', 'lineno', 'funcName', 'created', 'msecs', 'relativeCreated',
+            'thread', 'threadName', 'process', 'processName',
+        ]
+        record_dict = dict((attr, getattr(record, attr)) for attr in attributes)
+        record_dict['formatted'] = self.format(record)
+        try:
+            self.redis_conn.publish(self.channel, json.dumps(record_dict))
+        except redis.RedisError:
+            pass
+    
 def uint2int(d,bits,bp,complex=False):
     """
     Convert unsigned integers to signed values and return them
@@ -57,14 +81,14 @@ def add_default_log_handlers(logger, redishostname='ami_redis_host', fglevel=log
     syslog_handler.setFormatter(formatter)
     logger.addHandler(syslog_handler)
 
-    redis_host = config_redis.JsonRedis(redishostname, socket_timeout=1)
+    redis_host = redis.Redis(redishostname, socket_timeout=1)
     try:
         redis_host.ping()
     except redis.ConnectionError:
         logger.warn("Couldn't connect to redis server at %d"%redishostname)
         return logger
 
-    redis_handler = config_redis.RedisHandler('log-channel', redis_host)
+    redis_handler = RedisHandler('log-channel', redis_host)
     redis_handler.setLevel(bglevel)
     redis_handler.setFormatter(formatter)
     logger.addHandler(redis_handler)

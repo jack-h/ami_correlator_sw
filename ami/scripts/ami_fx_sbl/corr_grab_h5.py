@@ -10,6 +10,9 @@ import ami.amisa_control as control
 import ami.file_writer as fw
 import pylab
 import signal
+import logging
+
+logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
 
 def write_data(writer, d, timestamp, meta, **kwargs):
     if meta is not None:
@@ -144,6 +147,8 @@ if __name__ == '__main__':
                             noise_switched_data[ant_index,feng.n_chans:2*feng.n_chans] = from_redis
                         elif feng.band == 'low':
                             noise_switched_data[ant_index,0:feng.n_chans] = from_redis
+                    else:
+                        logger.warning('Couldn\'t get Redis key STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band))
 
                 if d is not None:
                     datavec[:,0,0,1] = d['corr00']

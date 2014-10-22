@@ -16,6 +16,8 @@ if __name__ == '__main__':
     p.set_description(__doc__)
     p.add_option('-p', '--plot', dest='plot', type='int', default=0,
         help='Number of grabs to do before showing plots. Default = 0 = do not plot.')
+    p.add_option('-e', '--expire', dest='expire', type='int', default=5,
+        help='Expiry time of redis keys in seconds. Default = 5. 0 = do not expire')
     p.add_option('-m', '--monitor', dest='monitor', action='store_true', default=False,
         help='Monitor continuously')
 
@@ -24,6 +26,11 @@ if __name__ == '__main__':
         config_file = None
     else:
         config_file = args[0]
+
+    if opts.expire == 0:
+        expire_time = None
+    else:
+        expire_time = opts.expire
 
     # initialise connection to correlator
     corr = AMI.AmiSbl(config_file=config_file, passive=True, skip_prog=True)
@@ -43,7 +50,7 @@ if __name__ == '__main__':
         for fn, feng in enumerate(corr.fengs):
             key = 'STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band)
             d = spectra[fn] * np.abs(eq[fn])**2
-            corr.redis_host.set(key, d.tolist())
+            corr.redis_host.set(key, d.tolist(), ex=expire_time)
         print 'New monitor data sent at time', time.time()
         if opts.plot != 0:
             x += spectra * np.abs(eq)**2

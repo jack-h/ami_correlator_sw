@@ -1,9 +1,12 @@
 import redis
+import helpers
 import socket
 import time
 import yaml
 import json
 import logging
+
+logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
 
 def write_config_to_redis(configfile):
     with open(configfile, 'r') as fh:
@@ -29,6 +32,13 @@ class JsonRedis(redis.Redis):
     def get(self, name):
         v = redis.Redis.get(self, name)
         if v is None:
+            logger.warning('Redis Key %s could not be read -- trying to get it\'s last update time...')
+            t = redis.Redis.get(self, '%s:last_update_time'%name)
+            if t is None:
+                logger.warning('Couldn\'t find an update time')
+            else:
+                t = json.loads(t)
+                logger.warning('Last update time was %d, (%d seconds in the past)'%(t, time.time() - t))
             return None
         else:
             return json.loads(v)
@@ -39,31 +49,13 @@ class JsonRedis(redis.Redis):
         Automatically send a key containing the
         update time, with keyname 'name:last_update_time:'
         '''
-        redis.Redis.set(self, name, json.dumps(value), **kwargs)
-        redis.Redis.set(self, name+':last_update_time', time.time())
+        if 'ex' in kwargs.keys():
+            # This should work as a kwarg to Redis.set, but it doesn't
+            self.setex(name, json.dumps(value), kwargs['ex'])
+        else:
+            redis.Redis.set(self, name, json.dumps(value), **kwargs)
+
+        redis.Redis.set(self, name+':last_update_time', json.dumps(time.time()))
         
 
-'''
-A Redis-based log handler from:
-http://charlesleifer.com/blog/using-redis-pub-sub-and-irc-for-error-logging-with-python/
-'''
-class RedisHandler(logging.Handler):
-    def __init__(self, channel, conn, *args, **kwargs):
-        logging.Handler.__init__(self, *args, **kwargs)
-        self.channel = channel
-        self.redis_conn = conn
-
-    def emit(self, record):
-        attributes = [
-            'name', 'msg', 'levelname', 'levelno', 'pathname', 'filename',
-            'module', 'lineno', 'funcName', 'created', 'msecs', 'relativeCreated',
-            'thread', 'threadName', 'process', 'processName',
-        ]
-        record_dict = dict((attr, getattr(record, attr)) for attr in attributes)
-        record_dict['formatted'] = self.format(record)
-        try:
-            self.redis_conn.publish(self.channel, json.dumps(record_dict))
-        except redis.RedisError:
-            pass
-    
 
