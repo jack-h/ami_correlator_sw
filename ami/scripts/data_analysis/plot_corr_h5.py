@@ -434,7 +434,7 @@ for cnt,bl in enumerate(bl_index):
             if opts.chan_time:
                 for c in range(len(chan_index)):
                     if opts.namemap is None:
-                        pylab.plot(t['times'],di[:,c])
+                        pylab.plot(t['times'],di[:,c], label='chan %d'%chan_index[c])
                     else:
                         remap = nameremap(opts.namemap)
                         ant0 = remap[bl_order[bl][0]]
