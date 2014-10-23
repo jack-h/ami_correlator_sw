@@ -56,6 +56,8 @@ if __name__ == '__main__':
         help='Send tx test patterns, and don\'t bother writing data to file')
     p.add_option('-n', '--nometa', dest='nometa',action='store_true', default=False, 
         help='Use this option to ignore the connection to the ami control server')
+    p.add_option('-p', '--phs2src', dest='phs2src',action='store_true', default=False, 
+        help='Phase the data to the source indicated by the ra,dec meta data')
 
     opts, args = p.parse_args(sys.argv[1:])
 
@@ -65,7 +67,8 @@ if __name__ == '__main__':
         config_file = args[0]
 
     writer = fw.H5Writer(config_file=config_file)
-    writer.set_bl_order([[0,0],[1,1],[0,1]])
+    bl_order = [[0,0], [1,1], [0,1]]
+    writer.set_bl_order(bl_order)
 
     if not opts.nometa:
         ctrl = control.AmiControlInterface(config_file=config_file)
@@ -151,6 +154,15 @@ if __name__ == '__main__':
                         logger.warning('Couldn\'t get Redis key STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band))
 
                 if d is not None:
+                    if opts.phs2src:
+                        uvw = corr.array.get_uvw_in_m(ra=ctrl.meta_data.ra, dec=ctrl.meta_data.dec, t=d['timestamp'])
+                        d['corr00'] *= np.exp(1j*2*np.pi*freqs/speed_of_light * uvw[0,0,2])
+                        d['corr01'] *= np.exp(1j*2*np.pi*freqs/speed_of_light * uvw[0,1,2])
+                        d['corr11'] *= np.exp(1j*2*np.pi*freqs/speed_of_light * uvw[1,1,2])
+                        phased_to = np.array([ctrl.meta_data.ra, ctrl.meta_data.dec])
+                    else:
+                        phased_to = np.array([corr.array.get_sidereal_time(d['timestamp']), corr.array.lat_r])
+
                     datavec[:,0,0,1] = d['corr00']
                     datavec[:,1,0,1] = d['corr11']
                     datavec[:,2,0,1] = d['corr01'][0::2] #datavec[:,:,:,1] should be real
@@ -172,7 +184,7 @@ if __name__ == '__main__':
                     if not opts.nometa:
                         if not opts.test_tx:
                             ctrl.try_send(d['timestamp'],1,cnt,txdata)
-                            write_data(writer,datavec,d['timestamp'],ctrl.meta_data,noise_demod=noise_switched_data)
+                            write_data(writer,datavec,d['timestamp'],ctrl.meta_data,noise_demod=noise_switched_data, phased_to=phased_to)
                             #pylab.plot(helpers.dbs(np.abs(txdata)))
                             #pylab.plot(np.abs(txdata))
                             #pylab.show()
@@ -181,7 +193,7 @@ if __name__ == '__main__':
                             fake_data = np.arange(4096)+cnt
                             ctrl.try_send(d['timestamp'],1,cnt,fake_data)
                     else:
-                        write_data(writer,datavec,d['timestamp'],None,noise_demod=noise_switched_data)
+                        write_data(writer,datavec,d['timestamp'],None,noise_demod=noise_switched_data, phased_to=phased_to)
                 else:
                     print "Failed to send because MCNT changed during snap"
         time.sleep(0.1)

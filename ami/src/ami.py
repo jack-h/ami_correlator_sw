@@ -11,6 +11,8 @@ import Queue
 import logging
 import roach
 import engines
+import antenna_functions
+from corr import sim
 
 logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
 
@@ -121,6 +123,7 @@ class AmiDC(object):
         self.adc_clk  = self.config['FEngine']['adc_clk']
         self.lo_freq  = self.config['FEngine']['mix_freq']
         self.n_bls = (self.n_ants * (self.n_ants + 1))/2
+        self.bl_order = sim.get_bl_order(self.n_bls)
 
         self.roaches = set([node['host'] for node in self.config['FEngine']['nodes']+self.config['XEngine']['nodes']])
 
@@ -129,10 +132,20 @@ class AmiDC(object):
         self.c_correlator = self.config['Configuration']['correlator']['runtime']
         self.c_correlator_hard = self.config['Configuration']['correlator']['hardcoded']
         self.c_global = self.config['Configuration']
-        #array config file
-        self.array_cfile = self.config['PostProcessing']['layout']
+        self.c_antennas = self.config['Antennas']
+        self.c_array = self.config['Array']
+
         # some debugging / info
         self._logger.info("ROACHes are %r"%self.roaches)
+        
+        # ant array shortcuts
+        self.array_lon = self.c_array['lon']
+        self.array_lat = self.c_array['lat']
+        self.ant_locs = [[0., 0., 0.] for a in self.c_antennas]
+        for ant in self.c_antennas:
+            self.ant_locs[ant['ant']] = ant['loc'] #this way the ants don't have to be in order in the config file
+
+        self.array = antenna_functions.AntArray((self.array_lat, self.array_lon), self.ant_locs)
 
 
     def connect_to_roaches(self):

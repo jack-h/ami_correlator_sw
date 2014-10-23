@@ -54,12 +54,13 @@ class H5Writer(object):
         self.c_correlator = self.config['Configuration']['correlator']['runtime']
         self.c_correlator_hard = self.config['Configuration']['correlator']['hardcoded']
         self.c_global = self.config['Configuration']
-        #array config file
-        self.array_cfile = self.config['PostProcessing']['layout']
-        ##array configuration
-        #self.array_cfile = self.config.get('array','array_layout')
-        #self.array_config = configparser.SafeConfigParser()
-        #self.array_config.read(self.array_cfile)
+        # geometry
+        self.ant_locs = [[0., 0., 0.,] for ant in range(self.n_ants)]
+        for i in range(self.n_ants):
+            for ant in self.config['Antennas']:
+                if ant['index'] == i:
+                    self.ant_locs[i] = ant['loc']
+        self.array_loc = [self.config['Array']['lat'], self.config['Array']['lon']]
 
     def start_new_file(self,name):
         """
@@ -88,6 +89,8 @@ class H5Writer(object):
             bl_order
             center_freq
             bandwidth
+            array_loc
+            antenna_locations
         """
         self.fh.attrs['n_chans'] = self.n_chans*self.n_bands
         self.fh.attrs['n_pols'] = self.n_pols
@@ -96,6 +99,8 @@ class H5Writer(object):
         self.fh.create_dataset('bl_order',shape=[self.n_bls,2],dtype=int,data=self.bl_order)
         self.fh.attrs['center_freq'] = self.center_freq
         self.fh.attrs['bandwidth'] = self.bandwidth
+        self.fh.attrs['array_loc'] = self.array_loc
+        self.fh.attrs['ant_locs'] = self.ant_locs
     def add_new_dataset(self,name,shape,dtype):
         """
         Add a new data set to the current h5 file.

@@ -33,9 +33,6 @@ Configuration:
             acc_len: 152588
             data_path: /data
 
-PostProcessing:
-    layout: AMISA.conf
-
 XEngine:
     n_chans: 2048
     n_ants: 2
@@ -47,26 +44,41 @@ XEngine:
         - band: high
           host: bob
 
+Array:
+    # array location in degrees
+    lat: 52.2050
+    lon: 0.1190
+
 Antennas:
     - ant: 0
+      loc: [22.0076, 17.5829, 0.0106]
       index: 9
     - ant: 1
+      loc: [12.0739, 7.7928, -0.0006]
       index: 9
     - ant: 2
+      loc: [17.0683, 7.8579, -0.0161]
       index: 9
     - ant: 3
+      loc: [7.2304, 17.6676, 0.0585]
       index: 0
     - ant: 4
+      loc: [14.4561, 27.8043, 0.0688]
       index: 9
     - ant: 5
+      loc: [22.0568, 11.2184, -0.0230]
       index: 9
     - ant: 6
+      loc: [5.7293, 12.2961, 0.0366]
       index: 9
     - ant: 7
+      loc: [19.6578, 23.3406, 0.0340]
       index: 1
     - ant: 8
+      loc: [9.4959, 24.5802, 0.0623]
       index: 9
     - ant: 9
+      loc: [14.1166, 15.8486, 0.0302]
       index: 9
 
 FEngine:
