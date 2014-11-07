@@ -107,6 +107,22 @@ def get_unscramble_map(n=11, m=3):
        out[i * 2**(n-m) : (i+1) * 2**(n-m)] = np.arange(i, 2**n, 2**m)
    return out
 
+def get_scramble_map(n=11, m=3):
+   """
+   generate the scramble map for a 2**n point FFT
+   with 2**m simultaneous input.
+   The scramble map is such that (eg)
+   scramble_map[j] returns the frequency bin
+   which FPGA channel index j represents.
+   It is naively calculated by calling get_unscramble_map
+   and looping over the indices to reverse the mapping
+   """
+   descr_map = get_unscramble_map(n=n, m=m)
+   out = np.zeros(2**n, dtype=int)
+   for i in range(2**n):
+       out[descr_map[i]] = i
+   return out
+
 def descramble_spectra(d, n=11, m=3):
    """
    descramble a spectra, d, with 2**n points
