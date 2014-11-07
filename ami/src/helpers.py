@@ -96,3 +96,23 @@ def add_default_log_handlers(logger, redishostname='ami_redis_host', fglevel=log
     logger.info("Logger %s created..."%logger.name)
 
     return logger
+
+def get_unscramble_map(n=11, m=3):
+   """
+   Generate the unscramble map for an 2**n point FFT
+   with 2**m simultaneous inputs
+   """
+   out = np.zeros(2**n, dtype=int)
+   for i in range(2**m):
+       out[i * 2**(n-m) : (i+1) * 2**(n-m)] = np.arange(i, 2**n, 2**m)
+   return out
+
+def descramble_spectra(d, n=11, m=3):
+   """
+   descramble a spectra, d, with 2**n points
+   obtained by doing an fft with 2**m
+   simultaneous inputs
+   """
+   descr_map = get_unscramble_map(n=n, m=m)
+   return d[descr_map]
+
