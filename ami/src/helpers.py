@@ -85,7 +85,7 @@ def add_default_log_handlers(logger, redishostname='ami_redis_host', fglevel=log
     try:
         redis_host.ping()
     except redis.ConnectionError:
-        logger.warn("Couldn't connect to redis server at %d"%redishostname)
+        logger.warn("Couldn't connect to redis server at %s"%redishostname)
         return logger
 
     redis_handler = RedisHandler('log-channel', redis_host)
