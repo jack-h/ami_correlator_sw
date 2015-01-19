@@ -32,6 +32,10 @@ class Roach(katcp.FpgaClient):
         self._logger.debug('Got %d bytes'%d['length'])
         return np.array(struct.unpack('>%d%s'%(d['length']/n_bytes,format),d['data']))
 
+    def calibrate_qdr(self, qdrname, verbosity=1):
+        qdr = qdr.Qdr(fpga, name)
+        qdr.qdr_cal(fail_hard=True, verbosity=verbosity)
+
     def safe_prog(self, check_clock=True):
         """
         A wrapper for the FpgaClient progdev method.
