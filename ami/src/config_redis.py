@@ -32,7 +32,7 @@ class JsonRedis(redis.Redis):
     def get(self, name):
         v = redis.Redis.get(self, name)
         if v is None:
-            logger.warning('Redis Key %s could not be read -- trying to get it\'s last update time...')
+            logger.warning('Redis Key %s could not be read -- trying to get it\'s last update time...'%name)
             t = redis.Redis.get(self, '%s:last_update_time'%name)
             if t is None:
                 logger.warning('Couldn\'t find an update time')
