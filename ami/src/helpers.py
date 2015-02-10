@@ -4,6 +4,8 @@ import logging.handlers
 import sys
 import redis
 import json
+import socket
+import struct
 
 '''
 A Redis-based log handler from:
@@ -25,6 +27,8 @@ class RedisHandler(logging.Handler):
         record_dict['formatted'] = self.format(record)
         try:
             self.redis_conn.publish(self.channel, json.dumps(record_dict))
+        except UnicodeDecodeError:
+            self.redis_conn.publish(self.channel, 'UnicodeDecodeError on emit!')
         except redis.RedisError:
             pass
     
@@ -131,4 +135,10 @@ def descramble_spectra(d, n=11, m=3):
    """
    descr_map = get_unscramble_map(n=n, m=m)
    return d[descr_map]
+
+def ip_str2int(ip):
+    return struct.unpack("!L", socket.inet_aton(ip))[0]
+
+def ip_int2str(ip):                                                               
+    return socket.inet_ntoa(struct.pack("!I", ip)) 
 
