@@ -1,6 +1,5 @@
 import os
 import h5py
-import configparser
 import yaml
 import config_redis
 
@@ -35,7 +34,7 @@ class H5Writer(object):
         self.n_chans = self.config['Configuration']['correlator']['hardcoded']['n_chans']
         self.n_pols  = self.config['Configuration']['correlator']['hardcoded']['n_pols']
         self.output_format  = self.config['Configuration']['correlator']['hardcoded']['output_format']
-        self.acc_len  = self.config['Configuration']['correlator']['runtime']['acc_len']
+        self.acc_len  = self.config['XEngine']['acc_len']
         self.data_path  = self.config['Configuration']['correlator']['runtime']['data_path']
         self.adc_clk  = self.config['FEngine']['adc_clk']
         self.lo_freq  = self.config['FEngine']['mix_freq']
