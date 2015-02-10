@@ -151,8 +151,8 @@ class Qdr(object):
         "checks calibration on a qdr. Raises an exception if it failed."
         patfail=0
         for pattern in CAL_DATA:
-            self.parent.blindwrite(self.memory,struct.pack('>%iL'%len(pattern),*pattern))
-            retdat=struct.unpack('>%iL'%len(pattern), self.parent.read(self.memory,len(pattern)*4))
+            self.parent.blindwrite(self.memory,struct.pack('>%iL'%len(pattern),*pattern), offset=2**22)
+            retdat=struct.unpack('>%iL'%len(pattern), self.parent.read(self.memory,len(pattern)*4, offset=2**22))
             for word_n,word in enumerate(pattern):
                 patfail=patfail|(word ^ retdat[word_n])
                 if verbosity>2:
@@ -175,8 +175,8 @@ class Qdr(object):
         for step in range(n_steps):
             patfail=0
             for pattern in CAL_DATA:
-                self.parent.blindwrite(self.memory,struct.pack('>%iL'%len(pattern),*pattern))
-                retdat=struct.unpack('>%iL'%len(pattern), self.parent.read(self.memory,len(pattern)*4))
+                self.parent.blindwrite(self.memory,struct.pack('>%iL'%len(pattern),*pattern), offset=2**22)
+                retdat=struct.unpack('>%iL'%len(pattern), self.parent.read(self.memory,len(pattern)*4, offset=2**22))
                 for word_n,word in enumerate(pattern):
                     patfail=patfail|(word ^ retdat[word_n])
                     if verbosity>2:
@@ -258,6 +258,22 @@ class Qdr(object):
                 print "{0:036b}".format(mask)
             self.qdr_delay_out_step(mask,1)
 
+    def qdr_check_cal_any_good(self,verbosity=0):
+        "checks calibration on a qdr. returns True if any of the bits were good"
+        patfail=0
+        for pn, pattern in enumerate(CAL_DATA):
+            self.parent.blindwrite(self.memory,struct.pack('>%iL'%len(pattern),*pattern), offset=2**22)
+            retdat=struct.unpack('>%iL'%len(pattern), self.parent.read(self.memory,len(pattern)*4, offset=2**22))
+            for word_n,word in enumerate(pattern):
+                patfail=patfail|(word ^ retdat[word_n])
+                if verbosity>2:
+                    print "{0:032b}".format(word),
+                    print "{0:032b}".format(retdat[word_n]),
+                    print "{0:032b}".format(patfail)
+                if patfail == 0xffffffff:
+                    return False
+        return True
+
     def qdr_cal(self, fail_hard=True, verbosity=0):
         """
         Calibrates a QDR controller, stepping input delays and (if that fails) output delays. Returns True if calibrated, raises a runtime exception if it doesn't.
@@ -284,6 +300,54 @@ class Qdr(object):
                             clk_delay=out_step,verbosity=verbosity)
             cal = self.qdr_cal_check(verbosity)
             out_step += 1
+        if self.qdr_cal_check(verbosity):
+            return True
+        else:
+            if fail_hard:
+                raise RuntimeError('QDR %s calibration failed.' % self.name)
+            else:
+                return False
+
+    def qdr_cal2(self, fail_hard=True, verbosity=0):
+        """
+        Calibrates a QDR controller
+        Step output delays until some of the bits reach their eye. Then step input delays
+        Returns True if calibrated, raises a runtime exception if it doesn't.
+        :param verbosity:
+        :return:
+        """
+        cal = False
+        out_step = 0
+        in_delays = [0 for bit in range(36)]
+        for out_step in range(32):
+            if verbosity > 0:
+                print 'Looking for any good bits with out delay %d'%out_step
+            self.apply_cals(in_delays,
+                            out_delays=[out_step for bit in range(36)],
+                            clk_delay=out_step,verbosity=verbosity)
+            if self.qdr_check_cal_any_good(verbosity=verbosity):
+                break
+
+        # reset all the in delays to zero, and the out delays to this iteration.
+        self.apply_cals(in_delays,
+                        out_delays=[out_step for bit in range(36)],
+                        clk_delay=out_step,verbosity=verbosity)
+        if verbosity > 0:
+            print "--- === Trying with OUT DELAYS to %i === ---" % out_step,
+            print 'was: %i' % self.qdr_delay_clk_get()
+        try:
+            in_delays = self.find_in_delays(verbosity)
+        except:
+            in_delays = [0 for bit in range(36)]
+
+        if verbosity > 0:
+            print 'Using in delays:', in_delays
+
+        self.apply_cals(in_delays,
+                        out_delays=[out_step for bit in range(36)],
+                        clk_delay=out_step,verbosity=verbosity)
+        cal = self.qdr_cal_check(verbosity)
+
         if self.qdr_cal_check(verbosity):
             return True
         else:

@@ -2,6 +2,8 @@ import struct, logging, time
 import corr.katcp_wrapper as katcp
 import helpers
 import numpy as np
+import re
+import qdr
 
 logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
 
@@ -26,15 +28,29 @@ class Roach(katcp.FpgaClient):
         See the python struct manual for details of available formats.
         """
 
-        self._logger.debug('Snapping register %s (assuming format %s)'%(name, format))
+        self._logger.info('Snapping register %s (assuming format %s)'%(name, format))
         n_bytes = struct.calcsize('=%s'%format)
-        d = self.snapshot_get(name, **kwargs)
-        self._logger.debug('Got %d bytes'%d['length'])
+        #d = self.snapshot_get(name, **kwargs)
+        d = self.snapshot_get(name, man_trig=True)
+        self._logger.info('Got %d bytes'%d['length'])
         return np.array(struct.unpack('>%d%s'%(d['length']/n_bytes,format),d['data']))
 
-    def calibrate_qdr(self, qdrname, verbosity=1):
-        qdr = qdr.Qdr(fpga, name)
-        qdr.qdr_cal(fail_hard=True, verbosity=verbosity)
+    def calibrate_all_qdr(self, verbosity=1):
+        """
+        search for qdr's in the device list of the currently running firmware and
+        attempt to calibrate them all
+        """
+        self._logger.info('Searching for QDRs to calibrate on roach %s'%self.host)
+        dev_list = self.listdev()
+        for dev in dev_list:
+            if re.search('qdr[0-9]_memory', dev) is not None:
+                self._logger.info('Found QDR: %s'%dev)
+                self.calibrate_qdr(dev.rstrip('_memory'), verbosity=verbosity)
+
+    def calibrate_qdr(self, qdrname, verbosity=2):
+        self._logger.info('Attempting to calibrate %s'%qdrname)
+        qdr_obj = qdr.Qdr(self, qdrname)
+        qdr_obj.qdr_cal2(fail_hard=True, verbosity=verbosity)
 
     def safe_prog(self, check_clock=True):
         """
@@ -46,8 +62,11 @@ class Roach(katcp.FpgaClient):
         if self.boffile not in self.listbof():
             self._logger.critical("boffile %s not available on ROACH %s"%(self.boffile,self.host))
             raise RuntimeError("boffile %s not available on ROACH %s"%(self.boffile,self.host))
-        self.progdev('')
-        time.sleep(0.1)
+        #try:
+        #    self.progdev('')
+        #    time.sleep(0.1)
+        #except:
+        #    self._logger.warning("progdev('') call failed. Continuing anyway")
         self.progdev(self.boffile)
         time.sleep(0.1)
         # write_int automatically does a read check. The following call will fail
