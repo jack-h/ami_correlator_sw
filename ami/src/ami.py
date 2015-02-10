@@ -68,9 +68,61 @@ class AmiDC(object):
         elif skip_prog:
             self.initialise_f_engines(passive=False)
             self.initialise_x_engines(passive=False)
+            self.reset_tge_flags()
             self.load_sync()
+            self.set_ip_base(self.c_correlator['ten_gbe']['network'])
+            self.start_tge_taps()
+            self.set_chan_dests()
         else:
             self.program_all()
+
+    def set_ip_base(self, ip):
+        self._logger.info('Setting base IP to %s'%ip)
+        ip_list = map(int, ip.split('.'))
+        # We only write the top 24 bits to the FPGA
+        ip_int = (ip_list[0] << 16) + (ip_list[1] << 8) + ip_list[2]
+        for host, fpga in self.fpgas.iteritems():
+            fpga.write_int('ip_base', ip_int)
+
+    def get_mcnt2time_factors(self):
+        """
+        Get the offset and mult fact required to turn an mcnt into a time
+        """
+        conv_factor = self.c_correlator_hard['window_len']/(self.adc_clk*1e6)
+        offset = self.load_sync()
+        return {'offset': offset, 'conv_factor': conv_factor}
+
+    def mcnt2time(self,mcnt):
+        """
+        Convert an mcnt to a UTC time based on the instance's sync_time attribute.
+        """
+        conv_factor = self.fengs[0].n_chans * 2 * self.c_correlator_hard['window_len']/(self.adc_clk*1e6)
+        offset = self.load_sync()
+        return offset + mcnt * conv_factor
+
+    def time_to_mcnt(self, time):
+        mcnt_zero = self.load_sync()
+        if time < mcnt_zero:
+            self._logger.error('Requested time %f, which is prior to current sync time %f'%(time, offset))
+            raise RuntimeError('Requested time %f, which is prior to current sync time %f'%(time, offset))
+        offset = time - mcnt_zero
+        conv_factor = self.fengs[0].n_chans * 2 * self.c_correlator_hard['window_len']/(self.adc_clk*1e6)
+        return int(offset / conv_factor)
+
+    def arm_vaccs(self, armtime):
+        if (armtime - 2) < time.time():
+            self._logger.error("You can't arm X-Engine vaccs less than 2 seconds in the future")
+            raise RuntimeError("You can't arm X-Engine vaccs less than 2 seconds in the future")
+        arm_mcnt = self.time_to_mcnt(armtime)
+        self._logger.info("Arming Xengines at %s (MCNT: %d, 0x%8x)"%(time.ctime(armtime), arm_mcnt, arm_mcnt))
+        for xeng in self.xengs:
+            xeng.set_vacc_arm(arm_mcnt)
+            xeng.reset_vacc()
+        if time.time() + 1 > armtime:
+            self._logger.warning("Finished arming XEngines with less than 1s to spare")
+
+    def get_current_mcnt(self):
+        return self.time_to_mcnt(time.time())
 
     def arm_sync(self, send_sync=False):
         """
@@ -80,10 +132,15 @@ class AmiDC(object):
         """
         #wait for within 100ms of a half-second, then send out the arm signal.
         #TODO This code is ripped from medicina. Is it even right?
-        self._logger.info('Issuing F-Engine arm')
-        ready=0
-        while not ready:
-            ready=((int(time.time()*10+5)%10)==0)
+        
+        #self._logger.info('Issuing F-Engine arm')
+        #ready=0
+        #while not ready:
+        #    ready=((int(time.time()*10+5)%10)==0)
+        t = self.fengs[0].roachhost.read_int('pps_count')
+        while self.fengs[0].roachhost.read_int('pps_count') == t:
+            time.sleep(0.001)
+
         self.sync_time=int(time.time())+1
         self.all_fengs('arm_trigger')
         if send_sync:
@@ -118,12 +175,12 @@ class AmiDC(object):
         self.n_chans = self.config['Configuration']['correlator']['hardcoded']['n_chans']
         self.n_pols  = self.config['Configuration']['correlator']['hardcoded']['n_pols']
         self.output_format  = self.config['Configuration']['correlator']['hardcoded']['output_format']
-        self.acc_len  = self.config['Configuration']['correlator']['runtime']['acc_len']
         self.data_path  = self.config['Configuration']['correlator']['runtime']['data_path']
         self.adc_clk  = self.config['FEngine']['adc_clk']
         self.lo_freq  = self.config['FEngine']['mix_freq']
         self.n_bls = (self.n_ants * (self.n_ants + 1))/2
-        self.bl_order = sim.get_bl_order(self.n_bls)
+        self.bl_order = sim.get_bl_order(self.n_ants)
+     
 
         self.roaches = set([node['host'] for node in self.config['FEngine']['nodes']+self.config['XEngine']['nodes']])
 
@@ -177,7 +234,7 @@ class AmiDC(object):
             for key in feng.keys():
                 feng_attrs[key] = feng[key]
             for key in self.config['FEngine'].keys():
-                if key not in feng_attrs.keys():
+                if (key != 'nodes') and (key not in feng_attrs.keys()):
                     feng_attrs[key] = self.config['FEngine'][key]
             self._logger.info('Constructing F-engine %d (roach: %s, ant: %d, band: %s)'%(fn, feng['host'], feng['ant'], feng['band']))
             self.fengs.append(engines.FEngine(self.fpgas[feng['host']], 
@@ -186,6 +243,219 @@ class AmiDC(object):
         self.n_fengs = len(self.fengs)
         self._logger.info('%d F-engines constructed'%self.n_fengs)
 
+    def enable_debug_mac(self, debug_mac):
+        for xn, xeng in enumerate(self.xengs):
+            for i in range(4):
+                mac_str = struct.pack('>Q', debug_mac)
+                xeng.roachhost.write('network_link%d_core'%(i+1), mac_str, offset=(0x3000+8*1))
+
+    def disable_debug_mac(self):
+        for xn, xeng in enumerate(self.xengs):
+            for i in range(4):
+                mac_str = struct.pack('>Q', 0x02000000 + helpers.ip_str2int(self.c_correlator['ten_gbe']['network'])+ 1)
+                xeng.roachhost.write('network_link%d_core'%(i+1), mac_str, offset=(0x3000+8*1))
+
+    def tap_channel(self, channel, dest_ip, dest_mac):
+        self._logger.info('Tapping Channel %d -> IP %s, mac 0x%8x'%(channel, dest_ip, dest_mac))
+        dest_ip_int = helpers.ip_str2int(dest_ip)
+        base_ip_int = helpers.ip_str2int(self.c_correlator['ten_gbe']['network'])
+        if (dest_ip_int & 0xffffff00) != (base_ip_int & 0xffffff00):
+            self._logger.error('Debug ip %s and base ip %s are incompatible'%(dest_ip, self.c_correlator['ten_gbe']['network']))
+
+        # update the relevant mac address in the roach's arp table
+        mac_str = struct.pack('>Q', dest_mac)
+        ram_offset = 0x3000 + (8*(dest_ip_int & 0xff))
+        for host, fpga in self.fpgas.iteritems():
+            for i in range(4):
+                fpga.write('network_link%d_core'%(i+1), mac_str, offset=ram_offset)
+
+        # now change the destination address of the relevant channel
+        for feng in self.fengs:
+            ram = ''
+            if (feng.band == 'low') and (channel < feng.n_chans):
+                if channel & 1 == 0:
+                    ram = 'network_masker0_params'
+                else:
+                    ram = 'network_masker1_params'
+            if (feng.band == 'high') and (channel >= feng.n_chans):
+                if channel & 1 == 0:
+                    ram = 'network_masker2_params'
+                else:
+                    ram = 'network_masker3_params'
+            if ram != '':
+                ram_loc = channel // 2
+                prev_flags = feng.roachhost.read_int(ram, offset=ram_loc) #offset counts in 32bit words
+                new_flags = (prev_flags & 0xffff0000) + (dest_ip_int & 0xff)
+                feng.roachhost.write_int(ram, new_flags, offset=ram_loc)
+
+    def start_tge_taps(self):
+        """
+        Start TGE taps on all the boards.
+        Give each core an IP address dependent on the band which the associated
+        X-engine will process.
+        """
+        self.band2ip = np.zeros(self.n_xengs, dtype=int)
+        base_ip_int = helpers.ip_str2int(self.c_correlator['ten_gbe']['network'])
+        for xn, xeng in enumerate(self.xengs):
+            xeng.board_ip = base_ip_int + 4*xn #board level IP. ports have this address + {0..3}
+            self.band2ip[xeng.band] = xeng.board_ip
+            for i in range(4):
+                # try to kill any existing tap
+                try:
+                    self._logger.info('Trying to stop TGE tap core%d'%i)
+                    xeng.roachhost.tap_stop('core%d'%i)
+                    self._logger.info('stopped successfully')
+                except:
+                    self._logger.info('tap_stop failed')
+                    
+                self._logger.info('Starting TGE tap core%d on %s'%(i, xeng.hostname))
+                ip = xeng.board_ip + i
+                mac = 0x02000000 + ip
+                port = 10000
+                self._logger.info('mac: 0x%x, ip: %s, port: %d'%(mac, helpers.ip_int2str(ip), port))
+                xeng.roachhost.tap_start('core%d'%i, 'network_link%d_core'%(i+1),
+                                         mac, ip, port)
+                xeng.roachhost.tap_stop('core%d'%i)
+
+                # manually populate the mac table
+                for m in range(256):
+                    mac_str = struct.pack('>Q', 0x02000000 + (base_ip_int & 0xffffff00) + m)
+                    xeng.roachhost.write('network_link%d_core'%(i+1), mac_str, offset=(0x3000+8*m))
+        for n, ip in enumerate(self.band2ip):
+            self._logger.info('band to ip mapping: band %d -> ip %s'%(n, helpers.ip_int2str(ip)))
+                
+
+    def enable_tge_output(self):
+        self.set_chan_dests(enable_output=True)
+
+    def reset_tge_flags(self):
+        for fn, feng in enumerate(self.fengs):
+            if feng.adc == 0:
+                feng.roachhost.write('network_masker0_params', np.zeros(feng.n_chans/2, dtype=np.uint32).tostring())
+                feng.roachhost.write('network_masker1_params', np.zeros(feng.n_chans/2, dtype=np.uint32).tostring())
+            elif feng.adc == 1:
+                feng.roachhost.write('network_masker2_params', np.zeros(feng.n_chans/2, dtype=np.uint32).tostring())
+                feng.roachhost.write('network_masker3_params', np.zeros(feng.n_chans/2, dtype=np.uint32).tostring())
+
+    def set_chan_dests(self, enable_output=0, debug_mac=None):
+        """
+        Set the destination IPs / loopback/tge enables
+        for the output data streams
+        """
+        for fn, feng in enumerate(self.fengs):
+            this_board = feng.hostname
+            for xn, xeng in enumerate(self.xengs):
+                if xeng.hostname == this_board:
+                    my_xeng = self.xengs[xn] #The xengine associated with this fengine's board
+            chan_flags = np.arange(feng.n_chans / 2) #Number of channels per link
+            dest_bands = chan_flags % self.n_xengs  #The band each channel belongs to 
+            #dest_ip_base = self.band2ip[dest_bands] & 0xff #The board-level IP (shift up 2 bits and add 0->3 for port level)
+            dest_ip_base = self.band2ip[dest_bands] & 0xfffffffc #The board-level IP add 0->3 for port level)
+            my_ip_base = my_xeng.board_ip & 0xfffffffc
+            
+
+            lb_vld = np.array(dest_ip_base == my_ip_base, dtype=int)
+            tge_vld = np.array(lb_vld==0, dtype=int) * int(enable_output)
+            #lb_vld = np.zeros_like(tge_vld)
+            # Exclude the ends of the band, which don't go anywhere
+            lb_vld[my_xeng.n_chans*self.n_xengs/2:] = 0
+            tge_vld[my_xeng.n_chans*self.n_xengs/2:] = 0
+            # Put a sync on the first channel of each X-engine for antenna 0
+            sync= np.zeros_like(chan_flags)
+            if feng.ant == 0:
+                sync[0:self.n_xengs] = 1
+            # Every n_xengs (valid) channels we should increment the buffer ID
+            eob = np.zeros_like(chan_flags)
+            eob[self.n_xengs-1:my_xeng.n_chans*self.n_xengs/2:self.n_xengs] = 1
+            eob[my_xeng.n_chans*self.n_xengs:] = 0
+            #for i in range(20):
+            #    print i, helpers.ip_int2str(dest_ip_base[i]), 'tge_vld:', tge_vld[i]==1, 'eob:', eob[i], 'sync:', sync[i]
+
+            # make a list of channels for this xengine
+            this_xeng_chans = chan_flags[(dest_ip_base == my_ip_base) & ((lb_vld == 1) | (tge_vld == 1))] 
+            chans0 = this_xeng_chans * 2
+            chans1 = this_xeng_chans * 2 + 1
+            chans2 = this_xeng_chans * 2 + feng.n_chans
+            chans3 = this_xeng_chans * 2 + feng.n_chans + 1
+            comp_chans = []
+            for i in range(len(chans0)): #chans0,1,2,3 are all the same length
+                comp_chans += [chans0[i]]
+                comp_chans += [chans1[i]]
+                comp_chans += [chans2[i]]
+                comp_chans += [chans3[i]]
+            my_xeng.set_channel_map(comp_chans)
+            self.redis_host.set('XENG%d_CHANNEL_MAP'%my_xeng.band, comp_chans)
+            self._logger.info('Xeng %d has channel map %r'%(my_xeng.num, comp_chans))
+
+            if feng.adc == 0:
+                flags = ((dest_ip_base & 0xff) + 0) + (sync<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
+                feng.roachhost.write('network_masker0_params', flags_str)
+
+                flags = ((dest_ip_base & 0xff) + 1) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
+                feng.roachhost.write('network_masker1_params', flags_str)
+            elif feng.adc == 1:
+                flags = ((dest_ip_base & 0xff) + 2) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
+                feng.roachhost.write('network_masker2_params', flags_str)
+
+                flags = ((dest_ip_base & 0xff) + 3) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
+                feng.roachhost.write('network_masker3_params', flags_str)
+
+    def set_chan_dests_half_rate(self, enable_output=0, debug_mac=None):
+        """
+        Set the destination IPs / loopback/tge enables
+        for the output data streams
+        """
+        for fn, feng in enumerate(self.fengs):
+            this_board = feng.hostname
+            for xn, xeng in enumerate(self.xengs):
+                if xeng.hostname == this_board:
+                    my_xeng = self.xengs[xn] #The xengine associated with this fengine's board
+            chan_flags = np.arange(feng.n_chans / 2) #Number of channels per link
+            dest_bands = (chan_flags >> 1) % self.n_xengs  #The band each channel belongs to (send two consecutive chans to each board, we will only validate the first)
+            #dest_ip_base = self.band2ip[dest_bands] & 0xff #The board-level IP (shift up 2 bits and add 0->3 for port level)
+            dest_ip_base = self.band2ip[dest_bands] & 0xfffffffc #The board-level IP add 0->3 for port level)
+            my_ip_base = my_xeng.board_ip & 0xfffffffc
+
+            lb_vld = np.array(dest_ip_base == my_ip_base, dtype=int)
+            tge_vld = np.array(lb_vld==0, dtype=int) * int(enable_output)
+            #lb_vld = np.zeros_like(tge_vld)
+            # Exclude the ends of the band, which don't go anywhere
+            lb_vld[my_xeng.n_chans*self.n_xengs/2:] = 0
+            tge_vld[my_xeng.n_chans*self.n_xengs/2:] = 0
+            #wipe out every second channel
+            lb_vld[::2] = 0
+            tge_vld[::2] = 0
+            # Put a sync on the first channel of each X-engine
+            sync= np.zeros_like(chan_flags)
+            sync[0:self.n_xengs] = 1
+            # Every 2*n_xengs (valid) channels we should increment the buffer ID
+            eob = np.zeros_like(chan_flags)
+            eob[self.n_xengs-1:my_xeng.n_chans*self.n_xengs/2:2*self.n_xengs] = 1
+            eob[my_xeng.n_chans*self.n_xengs:] = 0
+            #for i in range(20):
+            #    print i, helpers.ip_int2str(dest_ip_base[i]), 'tge_vld:', tge_vld[i]==1, 'eob:', eob[i], 'sync:', sync[i]
+
+            if feng.adc == 0:
+                flags = ((dest_ip_base & 0xff) + 0) + (sync<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
+                feng.roachhost.write('network_masker0_params', flags_str)
+
+                flags = ((dest_ip_base & 0xff) + 1) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
+                feng.roachhost.write('network_masker1_params', flags_str)
+            elif feng.adc == 1:
+                flags = ((dest_ip_base & 0xff) + 2) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
+                feng.roachhost.write('network_masker2_params', flags_str)
+
+                flags = ((dest_ip_base & 0xff) + 3) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
+                feng.roachhost.write('network_masker3_params', flags_str)
+                
     def initialise_x_engines(self,passive=False):
         """
         Instantiate an XEngine instance for each one specified in the correlator config file.
@@ -193,10 +463,28 @@ class AmiDC(object):
         """
         self.xengs = []
         for xn, xeng in enumerate(self.config['XEngine']['nodes']):
+            xeng_attrs = {}
+            for key in xeng.keys():
+                xeng_attrs[key] = xeng[key]
+            for key in self.config['XEngine'].keys():
+                if (key != 'nodes') and (key not in xeng_attrs.keys()):
+                    xeng_attrs[key] = self.config['XEngine'][key]
             self._logger.info('Constructing X-engine %d (roach: %s)'%(xn, xeng['host']))
-            self.xengs.append(engines.XEngine(self.fpgas[xeng['host']],'ctrl',band=xeng['band'],n_ants=self.n_ants,chans=self.config['XEngine']['n_chans'], connect_passively=passive, acc_len=self.acc_len, num=xn))
+            self.xengs.append(engines.XEngine(self.fpgas[xeng['host']], 'ctrl', connect_passively=passive, num=xn, **xeng_attrs))
         self.n_xengs = len(self.xengs)
         self._logger.info('%d X-engines constructed'%self.n_xengs)
+
+    def set_xeng_outputs(self):
+        dest_ip = self.c_correlator['one_gbe']['dest_ip']
+        dest_mac = self.c_correlator['one_gbe']['dest_mac']
+        port = self.c_correlator['one_gbe']['port']
+        src_ip_base = ''
+        for i in range(3):
+            src_ip_base += '%s.'%dest_ip.split('.')[i]
+
+        for xeng in self.xengs:
+            xeng.set_engine_id(xeng.band)
+            xeng.config_output_gbe(src_ip_base+'%d'%(100+xeng.band), dest_ip, dest_mac, port)
 
     def all_fengs(self, method, *args, **kwargs):
         """
@@ -274,6 +562,9 @@ class AmiDC(object):
         else:
             return [getattr(fpga,method) for fpga in self.fpgas.values()]
 
+    def do_for_all(self, method, instances, *args, **kwargs):
+        pass
+
     def program_all(self,reinitialise=True):
         """
         Program all ROACHs. Since F and X engines share boards, programming via this method
@@ -285,17 +576,28 @@ class AmiDC(object):
         for roach in self.fpgas.values():
             self._logger.info("Programming ROACH %s with boffile %s"%(roach.host,roach.boffile))
             roach.safe_prog()
+            #self._logger.warning('SKIPPING QDR CALIBRATION -- TESTING ONLY!')
+            roach.calibrate_all_qdr()
+
         if reinitialise:
             # reprogramming messes with ctrl_sw, etc, so clean out the engine lists
             self._logger.info("Re-initializing engines")
             self.initialise_f_engines(passive=False)
             self.initialise_x_engines(passive=False)
+            self.set_ip_base(self.c_correlator['ten_gbe']['network'])
+            self.start_tge_taps()
+            self.set_chan_dests()
         else:
             self._logger.warning("Not re-initializing engines. Danger of sw/fw desync")
             self.fengs = []
             self.xengs = []
+        #tick =  time.time()
+        #self.all_fengs('calibrate_adc')
+        #tock = time.time()
+        #print 'Calibration time:', tock-tick
         for fn,feng in enumerate(self.fengs):
-            feng.calibrate_adc()
+             self._logger.warning('SKIPPING ADC CALIBRATION -- TESTING ONLY!')
+        #    feng.calibrate_adc()
     def get_array_config(self):
         pass
         

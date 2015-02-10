@@ -1,10 +1,17 @@
 Configuration:
     katcp_port: 7147
-    boffile: ami_fx_sbl_nofs_2014_Sep_30_1526.bof
+    #boffile: amisa_manual_bof_150115.bof
+    #boffile: ami_fx_nofs_cf7d_2015_Jan_15_1836.bof
+    #boffile: ami_fx_nofs_cf7d_2015_Jan_20_1828.bof
+    #boffile: ami_fx_nofs_cf7e_2015_Jan_25_1417.bof
+    #boffile: ami_fx_nofs_cf7e_2015_Jan_27_0028.bof
+    #boffile: ami_fx_nofs_cf7e_2015_Jan_28_1741.bof
+    #boffile: ami_fx_nofs_cf7e_2015_Feb_04_1137.bof
+    boffile: ami_fx_nofs_cf7e_2015_Feb_04_1857.bof
     redis_host: localhost
     redis_port: 6379
     control_interface:
-        host: 131.111.48.30
+        host: 10.1.0.10
         data_port: 2007
         meta_port: 2006
         n_ants: 10
@@ -13,7 +20,7 @@ Configuration:
         hardcoded:
             n_ants: 10
             n_bands: 2
-            n_chans: 2048
+            n_chans: 2040
             inputs_per_board: 2
             window_len: 1024
             output_format: l
@@ -21,28 +28,54 @@ Configuration:
         runtime:
             fft_shift: 0b111011011011011
             ten_gbe:
-                network: 10.0.0.0
-                port: 10000
+                network: 10.1.10.100
+                #port: 10000
             one_gbe:
-                network: 10.0.1.0
+                dest_ip: 10.1.1.1
+                dest_mac: 0x90E2BA75D060
                 port: 10000
             testing:
                 ct_tvg: no
                 qdr_tvg: no
                 vacc_tvg: no
-            acc_len: 152588
-            data_path: /data
+            data_path: /media/data0
 
 XEngine:
-    n_chans: 2040
+    n_chans: 204
+    bw_frac: 10
     n_ants: 10
+    acc_len: 1024
 
     nodes:
-        - band: low
-          host: alice
+        - host: amanda
+          band: 0
 
-        - band: high
-          host: bob
+        - host: beatrice
+          band: 1
+
+        - host: charlotte
+          band: 2
+
+        - host: daisy
+          band: 3
+
+        - host: elizabeth
+          band: 4
+
+        - host: felicity
+          band: 5
+
+        - host: grace
+          band: 6
+
+        - host: heidi
+          band: 7
+
+        - host: isabel
+          band: 8
+
+        - host: juliet
+          band: 9
 
 Array:
     # array location in degrees
@@ -108,12 +141,12 @@ FEngine:
         - ant: 1
           band: low
           adc: 0
-          host: betty 
+          host: beatrice
 
         - ant: 1
           band: high
           adc: 1
-          host: betty
+          host: beatrice
 
         - ant: 2
           band: low
@@ -161,30 +194,36 @@ FEngine:
           host: grace
 
         - ant: 6
+          band: high
+          adc: 1
           host: grace
 
         - ant: 7
+          band: low
+          adc: 0
           host: heidi
 
         - ant: 7
+          band: high
+          adc: 1
           host: heidi
 
         - ant: 8
+          band: low
+          adc: 0
           host: isabel
 
         - ant: 8
+          band: high
+          adc: 1
           host: isabel
 
         - ant: 9
+          band: low
+          adc: 0
           host: juliet
 
         - ant: 9
+          band: high
+          adc: 1
           host: juliet
-
-
-XEngines:
-    - chans: 0, 2047
-      host: alice
-
-    - chans: 2048, 4095
-      host: bob
