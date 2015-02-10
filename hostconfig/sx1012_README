@@ -1,0 +1,23 @@
+To create a text-based config
+
+enable
+configure terminal
+configuration text generate active running save my-filename
+
+To apply a text-based config
+
+enable
+configure terminal
+configuration text file my-filename apply
+
+To upload config to server
+
+enable
+configure terminal
+configuration text file my-filename upload scp://root@my-server/path
+
+To fetch config from server
+
+enable
+configure terminal
+configuration text fetch scp://root@my-server/root/tmp/my-filename

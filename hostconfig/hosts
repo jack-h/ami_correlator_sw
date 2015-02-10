@@ -1,0 +1,57 @@
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+
+# AMI systems
+172.24.225.24   amipca  amipca.ra.phy.private.cam.ac.uk
+172.24.225.27   amipcb  amipcb.ra.phy.private.cam.ac.uk
+172.24.225.217  amisdc  amisdc.ra.phy.private.cam.ac.uk
+172.24.225.219  amildc  amildc.ra.phy.private.cam.ac.uk
+127.0.0.1 ami_redis_host
+
+# AMI small array
+10.1.0.10  amis1      # amisa/amipca control system
+10.1.0.11  drive      # drive micro
+10.1.0.12  monitor    # monitor micro
+
+10.1.0.100 amisa-intswitch intswitch
+10.1.0.101 amisa-dataswitch dataswitch
+
+10.1.0.110 amisa-tgeswitch tgeswitch
+
+10.1.0.200 roach020835 alice
+10.1.0.201 roach020817 bob
+
+10.1.0.210 roach021104 felicity
+10.1.0.211 roach021105 elizabeth
+10.1.0.212 roach021106
+10.1.0.213 roach021107
+10.1.0.214 roach021108 isabel
+10.1.0.215 roach021109
+10.1.0.216 roach021110 daisy
+10.1.0.217 roach021111
+10.1.0.218 roach021112
+10.1.0.229 roach021113 heidi
+10.1.0.220 roach021114 juliet
+10.1.0.221 roach021115 beatrice
+10.1.0.222 roach021116 grace
+10.1.0.223 roach021117 amanda
+10.1.0.224 roach021118 charlotte
+10.1.0.225 roach021119 
+10.1.0.226 roach021120
+10.1.0.227 roach021121
+10.1.0.228 roach021122
+
+10.1.0.50 amisdc-p3p2
+
+#10GbE pcie cards
+10.1.10.1 amisdc-tge1
+10.1.10.2 amisdc-tge2
+
+## AMI large array
+##10.10.2.100 amila-intswitch
+##10.10.2.101 amila-dataswitch
+#
+##10.10.2.110 amila-10gbeswitch
+#
+##10.10.2.200 roach020823
+##10.10.2.201 roach020811

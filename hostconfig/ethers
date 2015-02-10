@@ -1,0 +1,47 @@
+# 1GbE switches
+fc:15:b4:54:cf:40 amisa-intswitch
+fc:15:b4:55:a5:00 amisa-dataswitch
+
+# 10GbE switches
+f4:52:14:e1:c0:54 amisa-tgeswitch
+
+# ROACH2s
+# Original 2 ROACHes for the ami single baseline tests
+02:44:01:02:08:35 roach020835
+02:44:01:02:08:17 roach020817
+# Order of 19 roaches receiver January 2015
+02:44:01:02:0b:04 roach021104
+02:44:01:02:0b:05 roach021105
+02:44:01:02:0b:06 roach021106
+02:44:01:02:0b:07 roach021107
+02:44:01:02:0b:08 roach021108
+02:44:01:02:0b:09 roach021109
+02:44:01:02:0b:0a roach021110
+02:44:01:02:0b:0b roach021111
+02:44:01:02:0b:0c roach021112
+02:44:01:02:0b:0d roach021113
+02:44:01:02:0b:0e roach021114
+02:44:01:02:0b:0f roach021115
+02:44:01:02:0b:10 roach021116
+02:44:01:02:0b:11 roach021117
+02:44:01:02:0b:12 roach021118
+02:44:01:02:0b:13 roach021119
+02:44:01:02:0b:14 roach021120
+02:44:01:02:0b:15 roach021121
+02:44:01:02:0b:16 roach021122
+
+
+
+
+
+
+
+
+
+
+# p3p2 of amisdc
+90:E2:BA:75:D0:61 amisdc-p3p2
+
+#10GbE pcie cards
+F4:52:14:4C:69:00 amisdc-tge1
+F4:52:14:4C:69:01 amisdc-tge2
