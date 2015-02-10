@@ -29,9 +29,9 @@ class Engine(object):
         software status read, but no changes to the running firmware will be made.
         """
         self._logger = logger
-        hostname = roachhost.host
-        self.roachhost = roach.Roach(hostname, port)
-        time.sleep(0.01)
+        self.hostname = roachhost.host
+        self.roachhost = roach.Roach(self.hostname, port)
+        time.sleep(0.02)
         self.ctrl_reg = ctrl_reg
         self.reg_suffix = reg_suffix
         self.reg_prefix = reg_prefix
@@ -215,6 +215,10 @@ class FEngine(Engine):
             self.noise_switch_enable(True)
             self.set_adc_acc_len()
             self.set_fft_acc_len()
+            self.set_ant_id()
+
+    def set_ant_id(self):
+        self.write_int('ant_id', self.ant)
 
     def config_get(self, key):
         if key in self.config.keys():
@@ -398,10 +402,21 @@ class FEngine(Engine):
         d = np.zeros(self.n_chans)
         # arm snap blocks
         # WARNING: we can't gaurantee that they all trigger off the same pulse
-        for i in range(4):
-            self.write_int('auto_snap_%d_ctrl'%i,0)
-        for i in range(4):
-            self.write_int('auto_snap_%d_ctrl'%i,1)
+
+        # This loop is a hack to make sure the snaps trigger together. NB: This is important since
+        # different bits from the same sample end up in multiple snaps. TODO: fix this in firmware
+        sync_ok = False
+        while (not sync_ok): 
+            for i in range(3):
+                self.write_int('auto_snap_%d_ctrl'%i,0)
+            for i in range(3):
+                self.write_int('auto_snap_%d_ctrl'%i,1)
+            sync_ok = True
+            for i in range(3):
+                # After arming, check no snaps have started taking data
+                # If they have, rearm and start again
+                if self.read_int('auto_snap_0_status') & (2**31 - 1) != 0:
+                    sync_ok = False
 
         # wait for data to come.
         # NB: there is no timeout condition
@@ -413,18 +428,33 @@ class FEngine(Engine):
             time.sleep(0.01)
 
         # grab data
-        for i in range(4):
-            s = np.array(struct.unpack('>%dq'%(nbytes/8), self.read('auto_snap_%d_bram'%i, nbytes)))
-            #s = self.snap('auto_snap_%d'%i, format='q')
-            d[2*i::8] = s[0::2]
-            d[2*i + 1::8] = s[1::2]
+        s0 = np.array(struct.unpack('>%dH'%(nbytes/2), self.read('auto_snap_0_bram', nbytes)))
+        s1 = np.array(struct.unpack('>%dH'%(nbytes/2), self.read('auto_snap_1_bram', nbytes)))
+        s2 = np.array(struct.unpack('>%dH'%(nbytes/2), self.read('auto_snap_2_bram', nbytes)))
+        s = np.array([s0, s1, s2])
 
+        # each snap is 128 bits wide. 3 snaps is 384 bits -> 8 * 48 bit signed integers
+        # Do bit manipulations to carve up the snaps into 16 bit chunks and glue them together appropriately
+        for i in range(8):
+            top16 = s[(i*3 + 0) // 8, (i*3 + 0) % 8 :: 8]
+            mid16 = s[(i*3 + 1) // 8, (i*3 + 1) % 8 :: 8]
+            low16 = s[(i*3 + 2) // 8, (i*3 + 2) % 8 :: 8]
+            d[i::8] = helpers.uint2int((top16 << 32) + (mid16 << 16) + low16, 48, 34, complex=False)
+        
         d /= float(self.fft_power_acc_len)
-        d /= 2**34
         if autoflip and self.inv_band:
             d = d[::-1]
         return d
-            
+
+    def get_quant_spectra(self, autoflip=False):
+        d = self.snap('quant_snap', format='B')
+        # The results are 4bit real/imag pairs, so reformat
+        if autoflip and self.inv_band:
+            return helpers.uint2int(d, 4, 3, complex=True)
+        else:
+            return helpers.uint2int(d, 4, 3, complex=True)[::-1]
+        
+           
     def get_eq(self, redishost=None, autoflip=False, per_channel=False):
         n_eq_coeffs = 2 * self.n_chans / self.eq_dec #2 for complex
         n_bytes_per_coeff = struct.calcsize(self.eq_format)
@@ -451,24 +481,21 @@ class XEngine(Engine):
     """
     A subclass of Engine, encapsulating X-Engine specific properties
     """
-    def __init__(self,roachhost,ctrl_reg='ctrl',id=0,band='low',chans=1024,n_ants=8, acc_len=1024, connect_passively=True, num=0):
+    def __init__(self,roachhost, ctrl_reg='ctrl', id=0, connect_passively=True, num=0, **kwargs):
         """
         Instantiate a new X-engine.
         roachhost: The hostname of the ROACH on which this Engine lives
         ctrl_reg: The name of the control register of this engine
         id: The id of this engine, if multiple are present on a ROACH
-        chans: The number of channels processed by this X-engine
-        n_ants: The number of antennas processed by this X-engine
-        acc_len: The accumulation length of this X-engine
         connect_passively: True if you want to instantiate an engine without modifying it's
         current running state. False if you want to reinitialise the control software of this engine.
         """
-        Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg,connect_passively=connect_passively,reg_prefix='xeng_', num=num)
+        # attributize dictionary
+        for key in kwargs.keys():
+            self.__setattr__(key, kwargs[key])
+
+        Engine.__init__(self,roachhost,ctrl_reg=ctrl_reg,connect_passively=connect_passively,reg_prefix='xeng%d_'%id, num=num)
         self.id = id
-        self.chans=1024
-        self.n_ants = n_ants
-        self.acc_len = acc_len
-        self.band = band
         if not connect_passively:
             self.set_acc_len()
 
@@ -477,6 +504,30 @@ class XEngine(Engine):
         Reset this engine
         """
         pass
+    
+    def set_channel_map(self, map):
+        self.chan_map = np.array(map, dtype=int)
+
+    def get_channel_map(self):
+        try:
+            return self.chan_map
+        except AttributeError:
+            self._logger.error('Tried to get X-Engine channel map but it hasn\'t been set!')
+
+    def config_output_gbe(self, src_ip, dest_ip, dest_mac, port):
+        src_ip_int = helpers.ip_str2int(src_ip) 
+        dest_ip_int = helpers.ip_str2int(dest_ip) 
+        mac_int = src_ip_int + 0xc0000000
+        self.write_int('one_gbe_tx_port', port)
+        self.write_int('one_gbe_tx_ip', dest_ip_int)
+        self.roachhost.write('one_GbE', struct.pack('>Q', mac_int), offset=0)
+        self.roachhost.write('one_GbE', struct.pack('>L', src_ip_int), offset=0x10)
+        self.roachhost.write('one_GbE', struct.pack('>Q', dest_mac), offset=(0x3000+8*(dest_ip_int & 0xff)))
+        #self.roachhost.tap_start('one_GbE', 'one_GbE', mac_int, src_ip_int, port)
+
+    def set_engine_id(self, id):
+        self.write_int('id', id)
+
     def set_acc_len(self,acc_len=None):
         """
         Set the accumulation length of this engine, using either the
@@ -484,14 +535,25 @@ class XEngine(Engine):
         """
         if acc_len is not None:
             self.acc_len = acc_len
-        self.write_int('acc_len',self.acc_len)
-        pass
-    def set_output_addr():
+        # The FPGA expects acc_len - 1 to be written to the 'acc. len maximum index' register
+        self.write_int('acc_len_mi',self.acc_len-1)
+
+    def set_vacc_arm(self, mcnt):
         """
-        Set address of output data stream
+        Arm the vacc to start recording data at this accumulation.
         """
-        pass
-    def set_tge_inputs():
+        self.write_int('target_mcnt', mcnt)
+
+    def reset_vacc(self):
+        self.ctrl_sw_edge(0)
+
+    def reset_ctrs(self):
+        self.ctrl_sw_edge(3)
+
+    def reset_gbe(self):
+        self.ctrl_sw_edge(1)
+
+    def set_tge_inputs(self):
         """
         Configure input 10GbE data streams
         """
