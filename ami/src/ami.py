@@ -76,6 +76,27 @@ class AmiDC(object):
         else:
             self.program_all()
 
+    def set_walsh(self, period=3, noise=15):
+        for feng in self.fengs:
+            dat = feng.set_walsh(self.n_ants, noise, feng.ant + 1, period)
+            # Also write to the same roaches GPIO outputs.
+            feng.roachhost.write('gpio_switch_states', dat.tostring())
+
+    def set_phase_switches(self, override=None):
+        '''
+        Override phase switches enable with specified state.
+        If no state is given, set to the default enabled
+        state from the config file.
+        '''
+        for fn, feng in enumerate(self.fengs):
+            if override is not None:
+                self._logger.warning('Overriding phase switch enable state of feng %d to %s'%(fn, override))
+                feng.phase_switch_enable(override)
+            else:
+                self._logger.info('Setting phase switch enable state of feng %d to %s'%(fn, feng.phase_switch))
+                feng.phase_switch_enable(feng.phase_switch)
+
+
     def set_ip_base(self, ip):
         self._logger.info('Setting base IP to %s'%ip)
         ip_list = map(int, ip.split('.'))
@@ -142,6 +163,7 @@ class AmiDC(object):
             time.sleep(0.001)
 
         self.sync_time=int(time.time())+1
+        self._logger.info("Arming F-engine syncs at time %.3f"%self.sync_time)
         self.all_fengs('arm_trigger')
         if send_sync:
             # send two syncs, as the first is flushed
@@ -294,11 +316,9 @@ class AmiDC(object):
         Give each core an IP address dependent on the band which the associated
         X-engine will process.
         """
-        self.band2ip = np.zeros(self.n_xengs, dtype=int)
         base_ip_int = helpers.ip_str2int(self.c_correlator['ten_gbe']['network'])
         for xn, xeng in enumerate(self.xengs):
             xeng.board_ip = base_ip_int + 4*xn #board level IP. ports have this address + {0..3}
-            self.band2ip[xeng.band] = xeng.board_ip
             for i in range(4):
                 # try to kill any existing tap
                 try:
@@ -326,7 +346,12 @@ class AmiDC(object):
                 
 
     def enable_tge_output(self):
+        self._logger.info("Enabling TGE outputs")
         self.set_chan_dests(enable_output=True)
+
+    def disable_tge_output(self):
+        self._logger.info("Disabling TGE outputs")
+        self.set_chan_dests(enable_output=False)
 
     def reset_tge_flags(self):
         for fn, feng in enumerate(self.fengs):
@@ -385,7 +410,7 @@ class AmiDC(object):
                 comp_chans += [chans3[i]]
             my_xeng.set_channel_map(comp_chans)
             self.redis_host.set('XENG%d_CHANNEL_MAP'%my_xeng.band, comp_chans)
-            self._logger.info('Xeng %d has channel map %r'%(my_xeng.num, comp_chans))
+            self._logger.debug('Xeng %d has channel map %r'%(my_xeng.num, comp_chans))
 
             if feng.adc == 0:
                 flags = ((dest_ip_base & 0xff) + 0) + (sync<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
@@ -474,6 +499,12 @@ class AmiDC(object):
         self.n_xengs = len(self.xengs)
         self._logger.info('%d X-engines constructed'%self.n_xengs)
 
+        self.band2ip = np.zeros(self.n_xengs, dtype=int)
+        base_ip_int = helpers.ip_str2int(self.c_correlator['ten_gbe']['network'])
+        for xn, xeng in enumerate(self.xengs):
+            xeng.board_ip = base_ip_int + 4*xn #board level IP. ports have this address + {0..3}
+            self.band2ip[xeng.band] = xeng.board_ip
+
     def set_xeng_outputs(self):
         dest_ip = self.c_correlator['one_gbe']['dest_ip']
         dest_mac = self.c_correlator['one_gbe']['dest_mac']
@@ -558,11 +589,36 @@ class AmiDC(object):
         """
         self._logger.debug('Calling method %s against all ROACHes in single-thread mode'%method)
         if callable(getattr(roach.Roach,method)):
-            return [getattr(fpga, method)(*args, **kwargs) for fpgas in self.fpgas.values()]
+            return [getattr(fpga, method)(*args, **kwargs) for fpga in self.fpgas.values()]
         else:
             return [getattr(fpga,method) for fpga in self.fpgas.values()]
 
     def do_for_all(self, method, instances, *args, **kwargs):
+        """
+        Multithread calls of <method> against all instances <instances>.
+        method: string name of method
+        instances: list of instances to call method against.
+        Optional args and kwargs are passed down to the methods.
+        The return value is a list, as in [instance.method() for instance in instances]
+        """
+        self._logger.debug('Calling method %s in multi-thread mode'%method)
+        if callable(getattr(instances[0],method)):
+            q = Queue.Queue()
+            for ii, inst in enumerate(instances):
+                t = threading.Thread(target=_queue_instance_method, args=(q, ii, inst, method, args, kwargs))
+                t.daemon = True
+                t.start()
+            self._logger.debug('Threads joining')
+            q.join()
+            self._logger.debug('Threads joined')
+            rv = [None for inst in instances]
+            for inst in instances:
+                num, result = q.get()
+                rv[num] = result
+            return rv
+        else:
+            # no point in multithreading this
+            return [getattr(inst, method) for inst in instances]
         pass
 
     def program_all(self,reinitialise=True):
@@ -573,11 +629,15 @@ class AmiDC(object):
         If reinitialise=False, no engines are instantiated (you will have to call initialise_f/x_engines
         manually.)
         """
-        for roach in self.fpgas.values():
-            self._logger.info("Programming ROACH %s with boffile %s"%(roach.host,roach.boffile))
-            roach.safe_prog()
-            #self._logger.warning('SKIPPING QDR CALIBRATION -- TESTING ONLY!')
-            roach.calibrate_all_qdr()
+        #for roach in self.fpgas.values():
+        #    self._logger.info("Programming ROACH %s with boffile %s"%(roach.host,roach.boffile))
+        #    roach.safe_prog()
+        #    #self._logger.warning('SKIPPING QDR CALIBRATION -- TESTING ONLY!')
+        #    #roach.calibrate_all_qdr()
+
+        self._logger.info("Programming all ROACHs!")
+        self.do_for_all('safe_prog', self.fpgas.values())
+        self.do_for_all('calibrate_all_qdr', self.fpgas.values())
 
         if reinitialise:
             # reprogramming messes with ctrl_sw, etc, so clean out the engine lists
@@ -592,12 +652,12 @@ class AmiDC(object):
             self.fengs = []
             self.xengs = []
         #tick =  time.time()
-        #self.all_fengs('calibrate_adc')
+        self.all_fengs('calibrate_adc')
         #tock = time.time()
         #print 'Calibration time:', tock-tick
-        for fn,feng in enumerate(self.fengs):
-             self._logger.warning('SKIPPING ADC CALIBRATION -- TESTING ONLY!')
-        #    feng.calibrate_adc()
+        #for fn,feng in enumerate(self.fengs):
+        #     self._logger.warning('SKIPPING ADC CALIBRATION -- TESTING ONLY!')
+        ##    feng.calibrate_adc()
     def get_array_config(self):
         pass
         
@@ -672,19 +732,6 @@ class AmiSbl(AmiDC):
             snap01   = np.array(snap01[0::2] + 1j*snap01[1::2], dtype=complex)
         return {'corr00':snap00,'corr11':snap11,'corr01':snap01,'timestamp':self.mcnt2time(mcnt)}
 
-    def set_phase_switches(self, override=None):
-        '''
-        Override phase switches enable with specified state.
-        If no state is given, set to the default enabled
-        state from the config file.
-        '''
-        for fn, feng in enumerate(self.fengs):
-            if override is not None:
-                self._logger.warning('Overriding phase switch enable state of feng %d to %s'%(fn, override))
-                feng.phase_switch_enable(override)
-            else:
-                self._logger.info('Setting phase switch enable state of feng %d to %s'%(fn, feng.phase_switch))
-                feng.phase_switch_enable(feng.phase_switch)
 
     def mcnt2time(self,mcnt):
         """

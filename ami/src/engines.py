@@ -5,6 +5,7 @@ import time, struct, logging
 import adc5g as adc
 import roach
 import numpy as np
+import scipy.linalg #for walsh (hadamard) matrices
 
 logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
 
@@ -215,10 +216,48 @@ class FEngine(Engine):
             self.noise_switch_enable(True)
             self.set_adc_acc_len()
             self.set_fft_acc_len()
-            self.set_ant_id()
+            self.set_ant_id(self.ant)
 
-    def set_ant_id(self):
-        self.write_int('ant_id', self.ant)
+    def set_walsh(self, N, noise, phase, period=3):
+        """
+        Set the noise and phase walsh functions of the F-Engine.
+        N: order of walsh matrix
+        noise: index of noise function
+        phase: index of phase function
+        period: period (2^?), in multiples of 2**15 clockcyles (firmware specific)
+                of shortest walsh step. I.e., 2**15 * 2**<period> * N = period of complete
+                walsh cycle in FPGA clocks.
+        """
+        N_round = int(2**(np.ceil(np.log2(N))))
+        walsh_matrix = scipy.linalg.hadamard(N_round)
+        walsh_matrix[walsh_matrix == -1] = 0
+        phase_func = walsh_matrix[phase]
+        noise_func = walsh_matrix[noise]
+
+        self._logger.info("Setting ANT %d (%s) phase walshes to %r"%(self.ant, self.band, phase_func))
+        self._logger.info("Setting ANT %d (%s) noise walshes to %r"%(self.ant, self.band, noise_func))
+
+        # Stretch each entry out by a factor of 2**<period>
+        phase_slow = []
+        noise_slow = []
+        for i in range(N_round):
+            phase_slow += [phase_func[i] for j in range(2**period)]
+            noise_slow += [noise_func[i] for j in range(2**period)]
+        
+        # The counter in the FPGA cycles through 2**12 ram addresses, so repeat
+        # the sequence. Since N_round and 2**period are always powers of 2,
+        # this is always an integer number of cycles
+        phase_slow_rep = np.array(phase_slow * (2**12 / 2**period / N_round))
+        noise_slow_rep = np.array(noise_slow * (2**12 / 2**period / N_round))
+        
+        # pack in firmware defined format and write to fpga
+        dat = np.array((phase_slow_rep << 1) + noise_slow_rep, dtype='>B')
+        self.write('switch_states', dat.tostring())
+        return dat
+ 
+
+    def set_ant_id(self, ant_id):
+        self.write_int('ant_id', ant_id)
 
     def config_get(self, key):
         if key in self.config.keys():
@@ -233,6 +272,7 @@ class FEngine(Engine):
         Write the fft_shift value for this engine
         """
         self.write_int('fft_shift',shift)
+
     def gen_freq_scale(self):
         """
         Generate the frequency scale corresponding fo the frequencies of each
@@ -386,9 +426,9 @@ class FEngine(Engine):
         #print opt
         #print glitches
     def get_adc_power(self):
-        init_val = self.read_int('adc_sum_sq0')
+        init_val = self.read_uint('adc_sum_sq0')
         while (True):
-            v = self.read_int('adc_sum_sq0')
+            v = self.read_uint('adc_sum_sq0')
             #print v
             if v != init_val:
                 break

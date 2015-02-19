@@ -59,6 +59,7 @@ class Roach(katcp.FpgaClient):
         the FPGA before programming. A test write to the sys_scratchpad register is performed after programming.
         If check_clock=True, the FPGA clock rate is estimated via katcp and returned in MHz.
         """
+        self._logger.info("Programming ROACH %s with boffile %s"%(self.host, self.boffile))
         if self.boffile not in self.listbof():
             self._logger.critical("boffile %s not available on ROACH %s"%(self.boffile,self.host))
             raise RuntimeError("boffile %s not available on ROACH %s"%(self.boffile,self.host))
