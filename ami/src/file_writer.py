@@ -2,6 +2,9 @@ import os
 import h5py
 import yaml
 import config_redis
+import numpy as np
+
+type_unicode = h5py.special_dtype(vlen=unicode)
 
 class H5Writer(object):
     """
@@ -100,6 +103,7 @@ class H5Writer(object):
         self.fh.attrs['bandwidth'] = self.bandwidth
         self.fh.attrs['array_loc'] = self.array_loc
         self.fh.attrs['ant_locs'] = self.ant_locs
+
     def add_new_dataset(self,name,shape,dtype):
         """
         Add a new data set to the current h5 file.
@@ -110,6 +114,7 @@ class H5Writer(object):
         self.fh.create_dataset(name,[1] + ([] if list(shape) == [1] else list(shape)), maxshape=[None] + ([] if list(shape) == [1] else list(shape)),dtype=dtype)
         self.datasets[name] = name
         self.datasets_index[name] = 0
+
     def append_data(self,name,shape,data,dtype):
         """
         Add data to the h5 file, starting a new data set or appending
@@ -119,12 +124,15 @@ class H5Writer(object):
         data: data values to be written
         dtype: data type
         """
+        if dtype is unicode:
+            dtype = type_unicode
         if name not in self.datasets.keys():
             self.add_new_dataset(name,shape,dtype)
         else:
             self.fh[name].resize(self.datasets_index[name]+1,axis=0)
         self.fh[name][self.datasets_index[name]] = data
         self.datasets_index[name] += 1
+
     def close_file(self):
         """
         Close the currently open h5 file
@@ -132,8 +140,22 @@ class H5Writer(object):
         if self.fh is not None:
             self.fh.close()
         self.fh = None
-    def add_attr(self,name,val):
+
+    def add_attr(self,name,val,shape=None, dtype=None):
         """
         Add an attribute with the supplied name and value to the current h5 file
         """
-        self.fh.attrs[name] = val
+        try:
+            if val.dtype.type is np.unicode_:
+                dtype = type_unicode
+        except AttributeError:
+            pass
+        try:
+            if type(val[0]) is unicode:
+                dtype = type_unicode
+        except TypeError:
+            pass
+
+        if type(val) is unicode:
+           dtype = type_unicode
+        self.fh.attrs.create(name, val, shape=shape, dtype=dtype)

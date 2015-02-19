@@ -26,7 +26,8 @@ class AmiControlInterface(object):
         else:
             self.config = yaml.load(config_file)
         self.parse_config_file()
-        self.meta_data = AmiMetaData(n_ants=self.n_ants,n_agcs=self.n_agcs)
+        self.meta_data = get_meta_struct(maxant=self.n_ants, maxagc=self.n_agcs)
+        print 'meta data size:', self.meta_data.size
         self.data = DataStruct(n_chans=self.n_chans*self.n_bands)
 
     def __del__(self):
@@ -58,15 +59,15 @@ class AmiControlInterface(object):
         """
         self.tsock.close()
         self.rsock.close()
-    def connect_sockets(self):
+    def connect_sockets(self, timeout=30):
         """
         Connect the tx/rx sockets to the correlator control server
         """
         self._bind_sockets()
-        self.rsock.settimeout(1.00)
+        self.rsock.settimeout(timeout)
         self.rsock.connect((self.control_ip,self.meta_port))
         self.rsock.settimeout(0.01)
-        self.tsock.settimeout(1.00)
+        self.tsock.settimeout(timeout)
         self.tsock.connect((self.control_ip,self.data_port))
         self.tsock.settimeout(0.01)
     def try_recv(self):
@@ -96,65 +97,161 @@ class AmiControlInterface(object):
             self.tsock.close()
             return -1
 
-        
-class AmiMetaData(object):
-    """
-    A class encapsulating AMI meta data properties
-    """
-    def __init__(self,n_ants=10,n_agcs=40):
+class Unpackable(object):
+    def __init__(self, varname, fmt):
         """
-        Instantiate a meta-data object, which expects data from
-        n_ants antennas and n_agcs gain control units.
+        A simple class to hold named values. It also stores
+        their format, to facilitate unpacking.
+        varname: The name of the variable
+        fmt: The format of the value, in python struct style (e.g. '>32L')
+             This format will be broken into 'end' and 'fmt' attributes.
         """
-        self.n_ants = n_ants
-        self.n_agcs = n_agcs
-        self.entries= [
-                  {'name':'timestamp', 'form':'!l'},
-                  {'name':'obs_status','form':'!i'},
-                  {'name':'obs_name',  'form':'!32s'},
-                  {'name':'nsamp',     'form':'!i'},
-                  {'name':'dummy',     'form':'!i'},
-                  {'name':'ra',        'form':'!d'},
-                  {'name':'dec',       'form':'!d'},
-                  {'name':'ha_reqd',   'form':'!%di'%self.n_ants},
-                  {'name':'ha_read',   'form':'!%di'%self.n_ants},
-                  {'name':'dec_reqd',  'form':'!%di'%self.n_ants},
-                  {'name':'dec_read',  'form':'!%di'%self.n_ants},
-                  {'name':'pc_value',  'form':'!%di'%self.n_ants},
-                  {'name':'pc_error',  'form':'!%di'%self.n_ants},
-                  {'name':'rain_data', 'form':'!%di'%self.n_ants},
-                  {'name':'tcryo',     'form':'!%di'%self.n_ants},
-                  {'name':'pcryo',     'form':'!%di'%self.n_ants},
-                  {'name':'agc',       'form':'!%di'%self.n_agcs},
-                 ]
-        self.gen_offsets()
-        whole_format = '!'
-        for entry in self.entries:
-            whole_format += entry['form'][1:]
-        self.size = struct.calcsize(whole_format)
+        self.varname = varname
+        if fmt[0] in ['>', '<', '!', '=', '@']:
+            self.fmt = fmt[1:]
+            self.end = fmt[0]
+        else:
+            self.fmt = fmt
+            self.end = ''
+        self.size = struct.calcsize(self.fmt)
+        self.offset = 0
 
-    def gen_offsets(self):
+class UnpackableStruct(Unpackable):
+    def __init__(self, varname, entries, end='!'):
         """
-        Generate the offsets of each value in the meta data struct,
-        to allow unpacking later
+        A class to facilitate unpacking binary data.
+        entries: A list of entries in the struct. These can either
+                 be instances of the Unpackable class,
+                 or instances of the UnpackableStruct class
+        end: endianess '!', '>', '<', '=' or '@'. See python struct docs.
+             This is the endianness with which values in the struct will be
+             unpacked. In theory, nested UnpackableStruct instances may
+             have different endianess, but I don't know why you would ever
+             do this.
+        """
+        
+        self.fmt = self._expand_fmt(entries)
+        self.end = end
+        Unpackable.__init__(self, varname, self.end + self.fmt)
+        self.entries = entries
+        self._gen_offsets()
+
+        # allow access to entries in the struct directly by name
+        for entry in self.entries:
+            if hasattr(self, entry.varname):
+                raise ValueError("Structure %s already has attribute '%s'!"%(self.varname, entry.varname))
+            self.__setattr__(entry.varname, entry)
+
+    def _expand_fmt(self, entries):
+        """
+        Generate the complete struct format string
+        """
+        fmt = ''
+        for entry in entries:
+            fmt += entry.fmt
+        return fmt
+
+    def _gen_offsets(self):
+        """
+        Generate the offsets of each entry in the struct,
+        to allow unpacking later.
         """
         offset = 0
         for entry in self.entries:
-            entry['offset'] = offset
-            offset += struct.calcsize(entry['form'])
+            entry.offset = offset
+            offset += entry.size
 
-    def extract_attr(self,data):
+    def extract_attr(self, data, offset=0):
         """
-        update the meta_data attributes with the values packed in 'data'
+        Recursively update the values held by the entries in the struct
         """
+        #print self.varname, 'Extracting a total of %d bytes (%s) (data size = %d bytes)'%(self.size, self.fmt, len(data))
         for entry in self.entries:
-            val = struct.unpack_from(entry['form'],data,entry['offset'])
-            if len(val) == 1:
-                val = val[0]
-            if entry['name'] is 'obs_name':
-                self.__setattr__(entry['name'],val.split('\x00')[0]) #first part of string upto null byte
+            #print 'extracting:', entry.varname, 'offset:', entry.offset, 'size', entry.size
+            if isinstance(entry, UnpackableStruct):
+                #print entry.varname, 'is a struct -- recursing'
+                entry.extract_attr(data, offset=offset+entry.offset)
             else:
-                self.__setattr__(entry['name'],val)
+                #print 'Extracting', entry.fmt, 'struct offset', offset, 'entry offset', entry.offset
+                val = struct.unpack_from((entry.end or self.end) + entry.fmt, data, offset + entry.offset)
+                if entry.fmt.endswith('s'):
+                    val = [str(v.split('\x00')[0] or 'XXX') for v in val] #first part of string upto null byte. Default to 'XXX' to save zero-length string headaches
+                if len(val) == 1:
+                    entry.val = val[0]
+                else:
+                    entry.val = val
+
+def get_meta_struct(maxant=10, maxsrc=16, maxagc=40):
+   tel_def = [
+       Unpackable('ax',    '!%dd'%maxant),
+       Unpackable('ay',    '!%dd'%maxant),
+       Unpackable('az',    '!%dd'%maxant),
+       Unpackable('tsys',  '!%df'%maxant),
+       Unpackable('rain',  '!%df'%maxant),
+       Unpackable('ant',   '!%di'%maxant),
+       Unpackable('freq',  '!f'),
+       Unpackable('array', '!i'),
+       Unpackable('nant',  '!i'),
+       Unpackable('nbase', '!i'),
+   ]
+
+   tel_def_str = UnpackableStruct('tel_def', tel_def, end='!')
+
+   obs_def = [
+       Unpackable('name',     '!32s'),
+       Unpackable('file',     '!64s'),
+       Unpackable('observer', '!32s'),
+       Unpackable('comment',  '!80s'),
+       Unpackable('mode',     '!i'),
+       Unpackable('nstep',    '!i'),
+       Unpackable('nstepx',   '!i'),
+       Unpackable('nstepy',   '!i'),
+       Unpackable('stepx',    '!i'),
+       Unpackable('stepy',    '!i'),
+       Unpackable('intsam',   '!i'),
+       Unpackable('obspad',   '!i'),
+   ]
+
+   obs_def_str = UnpackableStruct('obs_def', obs_def, end='!')
+
+   src_def = [
+       Unpackable('name',   '!' + '16s'*maxsrc),
+       Unpackable('epoch',  '!%di'%maxsrc),
+       Unpackable('raref',  '!%dd'%maxsrc),
+       Unpackable('decref', '!%dd'%maxsrc),
+       Unpackable('raobs',  '!%dd'%maxsrc),
+       Unpackable('decobs', '!%dd'%maxsrc),
+       Unpackable('flux',   '!%df'%maxsrc),
+       Unpackable('nsrc',   '!i'),
+       Unpackable('srcpad', '!i'),
+   ]
+
+   src_def_str = UnpackableStruct('src_def', src_def, end='!')
+   
+   dcor_out = [
+       Unpackable('timestamp', '!l'),
+       Unpackable('obs_status','!i'),
+       Unpackable('nsamp',     '!i'),
+       Unpackable('nsrc' ,     '!i'),
+       Unpackable('noff' ,     '!i'),
+       Unpackable('dummy',     '!i'),
+       Unpackable('obsra',     '!d'),
+       Unpackable('obsdec',    '!d'),
+       Unpackable('ha_reqd',   '!%di'%maxant),
+       Unpackable('ha_read',   '!%di'%maxant),
+       Unpackable('dec_reqd',  '!%di'%maxant),
+       Unpackable('dec_read',  '!%di'%maxant),
+       Unpackable('tcryo',     '!%di'%maxant),
+       Unpackable('pcryo',     '!%di'%maxant),
+       Unpackable('agc',       '!%di'%maxant),
+       tel_def_str,
+       obs_def_str,
+       src_def_str,
+   ]
+   
+   dcor_out_str = UnpackableStruct('dcor_out', dcor_out, end='!')
+   
+   return dcor_out_str
 
         
 class DataStruct(struct.Struct):
