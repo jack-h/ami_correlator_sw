@@ -135,6 +135,7 @@ class UnpackableStruct(Unpackable):
         Unpackable.__init__(self, varname, self.end + self.fmt)
         self.entries = entries
         self._gen_offsets()
+        print 'Building struct %s with size %d bytes'%(varname, self.size)
 
         # allow access to entries in the struct directly by name
         for entry in self.entries:
@@ -209,7 +210,7 @@ def get_meta_struct(maxant=10, maxsrc=16, maxagc=40):
        Unpackable('stepx',    '!i'),
        Unpackable('stepy',    '!i'),
        Unpackable('intsam',   '!i'),
-       Unpackable('obspad',   '!i'),
+       Unpackable('dummy',    '!i'),
    ]
 
    obs_def_str = UnpackableStruct('obs_def', obs_def, end='!')
@@ -223,13 +224,13 @@ def get_meta_struct(maxant=10, maxsrc=16, maxagc=40):
        Unpackable('decobs', '!%dd'%maxsrc),
        Unpackable('flux',   '!%df'%maxsrc),
        Unpackable('nsrc',   '!i'),
-       Unpackable('srcpad', '!i'),
+       Unpackable('dummy',  '!i'),
    ]
 
    src_def_str = UnpackableStruct('src_def', src_def, end='!')
    
    dcor_out = [
-       Unpackable('timestamp', '!l'),
+       Unpackable('timestamp', '!i'),
        Unpackable('obs_status','!i'),
        Unpackable('nsamp',     '!i'),
        Unpackable('nsrc' ,     '!i'),

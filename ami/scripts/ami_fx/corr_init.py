@@ -66,6 +66,7 @@ if __name__ == '__main__':
         corr.disable_tge_output()
         corr.arm_sync(send_sync=opts.manual_sync)
         time.sleep(3)
+        corr.set_chan_dests(enable_output=True)
         corr.enable_tge_output()
 
     #Enable outputs

@@ -320,8 +320,8 @@ class Qdr(object):
         out_step = 0
         in_delays = [0 for bit in range(36)]
         for out_step in range(32):
-            if verbosity > 0:
-                print 'Looking for any good bits with out delay %d'%out_step
+            #if verbosity > 0:
+            #    print 'Looking for any good bits with out delay %d'%out_step
             self.apply_cals(in_delays,
                             out_delays=[out_step for bit in range(36)],
                             clk_delay=out_step,verbosity=verbosity)

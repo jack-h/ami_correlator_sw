@@ -311,6 +311,8 @@ for fi, fname in enumerate(fnames):
     fh.flush()
     fh.close()
 
+#d = d.byteswap()
+
 y_label=''
 fig = pylab.figure()
 print m2,m1

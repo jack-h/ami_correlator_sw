@@ -7,7 +7,7 @@ Configuration:
     #boffile: ami_fx_nofs_cf7e_2015_Jan_27_0028.bof
     #boffile: ami_fx_nofs_cf7e_2015_Jan_28_1741.bof
     #boffile: ami_fx_nofs_cf7e_2015_Feb_04_1137.bof
-    boffile: ami_fx_nofs_cf7e_2015_Feb_04_1857.bof
+    boffile: ami_fx_nofs_cf7f_2015_Feb_23_1738.bof
     redis_host: localhost
     redis_port: 6379
     control_interface:

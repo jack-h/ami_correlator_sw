@@ -218,14 +218,14 @@ class FEngine(Engine):
             self.set_fft_acc_len()
             self.set_ant_id(self.ant)
 
-    def set_walsh(self, N, noise, phase, period=3):
+    def set_walsh(self, N, noise, phase, period=5):
         """
         Set the noise and phase walsh functions of the F-Engine.
         N: order of walsh matrix
         noise: index of noise function
         phase: index of phase function
-        period: period (2^?), in multiples of 2**15 clockcyles (firmware specific)
-                of shortest walsh step. I.e., 2**15 * 2**<period> * N = period of complete
+        period: period (2^?), in multiples of 2**13 clockcyles (firmware specific)
+                of shortest walsh step. I.e., 2**13 * 2**<period> * N = period of complete
                 walsh cycle in FPGA clocks.
         """
         N_round = int(2**(np.ceil(np.log2(N))))
@@ -433,10 +433,10 @@ class FEngine(Engine):
             if v != init_val:
                 break
             time.sleep(0.01)
-        v += (self.read_int('adc_sum_sq1') << 32)
+        v += (self.read_uint('adc_sum_sq1') << 32)
         if v > (2**63 - 1):
             v -= 2**64
-        return v / (2**7 * 256.0 * 16.0 * (self.adc_power_acc_len >> (4 + 8)))
+        return np.sqrt(float(v) / (16 * 256 * (self.adc_power_acc_len >> (8 + 4))))
 
     def get_spectra(self, autoflip=False):
         d = np.zeros(self.n_chans)
@@ -546,6 +546,7 @@ class XEngine(Engine):
         pass
     
     def set_channel_map(self, map):
+        self.roachhost.write('packetizer_chan_num', struct.pack('>%dL'%(2*self.n_chans), *map))
         self.chan_map = np.array(map, dtype=int)
 
     def get_channel_map(self):

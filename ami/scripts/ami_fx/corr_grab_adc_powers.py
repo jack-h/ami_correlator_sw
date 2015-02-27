@@ -33,7 +33,7 @@ if __name__ == '__main__':
 
     for feng in corr.fengs:
         feng.noise_switch_enable(opts.noise_switch)
-        print '%15s, ADC %d: %f'%(feng.host, feng.adc, feng.get_adc_power())
+        print '%15s, ADC %d (ANT:%d, BAND:%s): %f'%(feng.host, feng.adc, feng.ant+1, feng.band, feng.get_adc_power())
 
         
 

@@ -9,6 +9,7 @@ import logging
 import struct
 import redis
 import numpy as np
+import pylab
 
 logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
 
@@ -33,8 +34,8 @@ if __name__ == '__main__':
 
     p = OptionParser()
     p.set_usage('%prog [options] [CONFIG_FILE]')
-    p.add_option('-b', '--baseline', dest='baseline', type='string', default='0,0', 
-        help='Baseline to send to control server -- NOT YET IMPLEMENTED')
+    p.add_option('-b', '--baseline', dest='baseline', type='string', default='4,5', 
+        help='Baseline to send to control server. ANTENNA NUMBERING FROM ZERO!!!')
     p.set_description(__doc__)
 
     opts, args = p.parse_args(sys.argv[1:])
@@ -44,9 +45,18 @@ if __name__ == '__main__':
     else:
         config_file = args[0]
 
+
     # This initiates connections to the ROACHs, which isn't really necessary
     corr = AMI.AmiDC()
     time.sleep(0.1)
+
+    baseline = np.array(map(int, opts.baseline.split(',')))
+    for bl_n, bl in enumerate(corr.bl_order):
+        if (bl == baseline).all() or (bl == baseline[::-1]).all():
+            baseline_n = bl_n
+
+    print 'Sending baseline', baseline, '(index %d)'%baseline_n
+    
 
     ctrl = control.AmiControlInterface(config_file=config_file)
     ctrl.connect_sockets()
@@ -81,7 +91,9 @@ if __name__ == '__main__':
                 corrdat = np.fromstring(redis.Redis.get(corr.redis_host, 'RECEIVER:xeng_raw0'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
                 corr_shape = corrdat.shape
                 print 'Sending 1 baseline to control pc'
-                ctrl.try_send(ts, 1, corr_cnt, corrdat[:,0,0,:].reshape(corr_shape[0]*2))
+                #pylab.plot(corrdat[:, baseline_n, 0, :])
+                #pylab.show()
+                ctrl.try_send(ts, 1, corr_cnt, corrdat[:,baseline_n,0,:].reshape(corr_shape[0]*2))
                 last_corr_time = ts
                 corr_cnt += 1
             

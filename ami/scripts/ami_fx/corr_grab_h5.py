@@ -16,7 +16,7 @@ import json
 import redis
 import h5py
 
-logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
+logger = helpers.add_default_log_handlers(logging.getLogger("%s:%s"%(__file__,__name__)))
 
 #type_unicode = h5py.special_dtype(vlen=unicode)
 
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     meta = None #Default value before the receive loop updates the meta data
 
     # Packet buffers
-    N_WINDOWS = 2
+    N_WINDOWS = 4
     header_fmt = '>qll'
     header_size = struct.calcsize(header_fmt)
     pkt_size = struct.calcsize('%d%s'%(2*corr.n_bls, corr.config['Configuration']['correlator']['hardcoded']['output_format'])) + header_size
@@ -148,32 +148,38 @@ if __name__ == '__main__':
     while True:
         data= s.recv(pkt_size)
         mcnt, xeng, offset = struct.unpack('>qll', data[0:header_size])
-        buf_loc = chan_map[xeng*chans_per_xeng + offset]
+        buf_loc = offset#chan_map[xeng*chans_per_xeng + offset]
+        #print mcnt, mcnt //4096, mcnt % 4096, xeng, offset
         buf_id = (mcnt // (corr.fengs[0].n_chans * corr.n_bands) // acc_len) % N_WINDOWS
-	tsbuf[buf_id] = m2t['offset'] + m2t['conv_factor']*mcnt
+	last_timestamp = tsbuf[buf_id]
+	tsbuf[buf_id] = m2t['offset'] + m2t['conv_factor']*(mcnt // 4096)*4096
+        #if xeng==0 and offset==0:
+        #    print mcnt, buf_id, last_timestamp
+        if xeng*2 != (mcnt % 4096):
+            logger.error('(check 1) timestamp desync on xeng %d, (2xXENG=%d, mod(mcnt,4096) = %d)'%(xeng, xeng*2, mcnt%4096))
 
         if (buf_id != last_buf_id):
+            sys.stdout.flush()
             if not opts.nometa:
                 # Before we deal with the new accumulation, get the current metadata
                 meta_buf[buf_id] = get_meta(corr.redis_host, samp_mk)
                 file_meta = get_meta(corr.redis_host, file_mk)
-                receiver_enable = True#(meta_buf[buf_id]['obs_status']==4)
+                receiver_enable = (meta_buf[buf_id]['obs_status']==4)
                 if not receiver_enable:
                     current_obs = None
                     writer.close_file()
                 elif file_meta['obs_def:name'] != current_obs:
                     writer.close_file()
-                    fname = 'corr_%s_%d.h5'%(file_meta['obs_def:name'], meta_buf[buf_id]['timestamp'])
+                    fname = 'corr_%s_%d.h5'%(file_meta['obs_def:file'], meta_buf[buf_id]['timestamp'])
                     if not opts.test_tx:
-                        print "Starting a new file with name", fname
+                        logger.info("Starting a new file with name %s"%fname)
                         writer.start_new_file(fname)
                         for key, val in file_meta.iteritems():
                             writer.add_attr(key, val)
                     current_obs = file_meta['obs_def:name']
                 if time.time() - meta_buf[buf_id]['timestamp'] > 60*10:
                     if receiver_enable:
-                        print "10 minutes has elapsed since last valid meta timestamp"
-                        print "Closing Files"
+                        logger.warning("10 minutes has elapsed since last valid meta timestamp. Closing files")
                     #set current obs to none so the next valid obs will trigger a new file
                     current_obs = None
                     writer.close_file()
@@ -184,13 +190,13 @@ if __name__ == '__main__':
                     writer.start_new_file(fname)
                     current_obs = 'test'
 
+            win_to_ship = (buf_id - (N_WINDOWS // 2)) % N_WINDOWS
+	    this_int = time.time()
             if receiver_enable or opts.nometa:
                 # When the buffer ID changes, ship the window 1/2 a circ. buffer behind
-                win_to_ship = (buf_id - (N_WINDOWS // 2)) % N_WINDOWS
-                print 'got window %d, shipping window %d'%(buf_id, win_to_ship),
-	        this_int = time.time()
+                logger.info('got window %d, shipping window %d (time %.5f)'%(buf_id, win_to_ship, tsbuf[win_to_ship]))
                 if datctr[win_to_ship] == corr_chans:
-                    print '# New integration after %.2f seconds (mcnt offset %.2f) #'%(this_int - last_int, tsbuf[win_to_ship] - tsbuf[(win_to_ship-1)%N_WINDOWS])
+                    logger.info('# New integration is complete after %.2f seconds (mcnt offset %.2f) #'%(this_int - last_int, tsbuf[win_to_ship] - tsbuf[(win_to_ship-1)%N_WINDOWS]))
                     datavec = np.reshape(datbuf[win_to_ship], [corr.n_bands * 2048, corr.n_bls, 1, 2]) #chans * bls * pols * r/i
                     time.sleep(0.5)
                     # Write integration
@@ -201,10 +207,18 @@ if __name__ == '__main__':
                     redis.Redis.set(corr.redis_host, 'RECEIVER:xeng_raw0', datavec[:].tostring())
                     corr.redis_host.set('RECEIVER:timestamp0', tsbuf[win_to_ship])
                 else:
-                    print '#### ERROR -- Packets in buffer %d: %d ####'%(win_to_ship, datctr[win_to_ship])
-                last_buf_id = buf_id
-                datctr[win_to_ship] = 0
-                last_int = this_int
+                    logger.error('Packets in buffer %d: %d ####'%(win_to_ship, datctr[win_to_ship]))
+            last_buf_id = buf_id
+            datctr[win_to_ship] = 0
+            last_int = this_int
+            if not receiver_enable:
+                logger.info('Got an integration but receiver is not enabled')
+                #time.sleep(1)
+                 
+        else:
+            if tsbuf[buf_id] != last_timestamp:
+                logger.error('(check 2) -- timestamp desync! This timestamp (xeng %d) is %.5f, last one was %.5f'%(xeng, tsbuf[buf_id], last_timestamp))
+
 
         datbuf[buf_id, buf_loc] = np.fromstring(data[header_size:], dtype='>i')
         datctr[buf_id] += 1

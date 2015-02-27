@@ -15,7 +15,7 @@ def calc_eq_factor(d, target_power, snap_bits=18, quant_bits=4):
     target_bits = target_power + bit_diff
     return np.sqrt(1./d) * 2**target_bits
 
-def format_eq(eq, bits=16, bp=6):
+def format_eq(eq, bits=16, bp=6, imag=False):
     # convert the EQ into appropriately scaled integers
     # which will be correctly interpretted on the FPGA
     ints = np.round(eq*(2**bp))
@@ -24,8 +24,12 @@ def format_eq(eq, bits=16, bp=6):
     # pack as binary string
     eq_str = ''
     for v in ints:
-        eq_str += struct.pack('>h',v)
-        eq_str += struct.pack('>h',v)
+        if imag:
+            eq_str += struct.pack('>h',v)
+            eq_str += struct.pack('>h',0)
+        else:
+            eq_str += struct.pack('>h',0)
+            eq_str += struct.pack('>h',v)
     return eq_str
 
 if __name__ == '__main__':
@@ -44,8 +48,8 @@ if __name__ == '__main__':
         help='Use this flag to generate new coefficients. Otherwise, existing coefficients will be used unless they don\'t exist')
     p.add_option('--same', dest='same', action='store_true', default=False,
         help='Use this flag to load the coefficients from feng0 to all F-engines (can\'t be used in conjunction with --new)')
-    p.add_option('-p', '--plot', dest='plot', action='store_true', default=False,
-        help='Show plots. Default: False')
+    p.add_option('-p', '--plot', dest='plot', type='string', default=None,
+        help='Antennas to plot. "all": all antennas plotted, "1,2,3": ants 1,2,3 plotted')
 
     opts, args = p.parse_args(sys.argv[1:])
     load_new = opts.new
@@ -55,7 +59,7 @@ if __name__ == '__main__':
         config_file = args[0]
 
     # initialise connection to correlator
-    corr = AMI.AmiSbl(config_file=config_file, passive=True)
+    corr = AMI.AmiDC(config_file=config_file, passive=True)
     time.sleep(0.1)
 
     # load the existing coefficients
@@ -72,8 +76,15 @@ if __name__ == '__main__':
             else:
                 coeffs[keyname] = np.array(c)
     
+    if opts.plot == None:
+        ants_to_plot = []
+    elif opts.plot == 'all':
+        ants_to_plot = range(corr.n_ants)
+    else:
+        ants_to_plot = map(int, opts.plot.split(','))
+
     decimation=2
-    vec_width = corr.n_chans
+    vec_width = corr.fengs[0].n_chans
     for feng in corr.fengs:
         # turn off noise switch so we can sample powers
         feng.noise_switch_enable(False)
@@ -88,7 +99,7 @@ if __name__ == '__main__':
             d /= float(opts.samples)
             mean_power = np.mean(d)
             lowlimit = mean_power / float(opts.cutoff)
-            if opts.plot:
+            if opts.plot and (feng.ant in ants_to_plot):
                 pylab.figure(1)
                 pylab.plot(dbs(d),label='ANT %d, BAND %s'%(feng.ant,feng.band))
                 pylab.axhline(y=10*np.log10(lowlimit),label='ANT %d, BAND %s limit'%(feng.ant,feng.band), color=pylab.gca().lines[-1].get_color())
@@ -101,7 +112,7 @@ if __name__ == '__main__':
             #eq[eq>np.mean(eq)*opts.cutoff] = 0
             eq[d<lowlimit] = 0
             eq = eq[::decimation]
-            if opts.plot:
+            if opts.plot and (feng.ant in ants_to_plot):
                 pylab.figure(2)
                 pylab.plot(eq,label='ANT %d, BAND %s'%(feng.ant,feng.band))
                 pylab.title("EQ coefficients")
@@ -118,7 +129,7 @@ if __name__ == '__main__':
             else:
                 eq = coeffs['ANT%d_%s'%(feng.ant,feng.band)]
 
-        eq_str = format_eq(eq,bits=16,bp=6)
+        eq_str = format_eq(eq,bits=16,bp=6,imag=False)
         feng.write('eq', eq_str)
         rb = struct.unpack('>1024H', feng.read('eq',1024*2))
         #pylab.figure(3)
@@ -130,15 +141,15 @@ if __name__ == '__main__':
 
         print "Grabbing snapshot of quantized signal for Antenna %d %s band"%(feng.ant,feng.band)
         #quant = uint2int(feng.snap('quant_snap',format='B',wait_period=3),4,3,complex=True)[0:corr.n_chans]
-        quant = uint2int(feng.snap('quant_snap',format='B',wait_period=3),4,3,complex=True)[0:corr.n_chans]
+        quant = uint2int(feng.snap('quant_snap',format='B',wait_period=3),4,3,complex=True)[0:feng.n_chans]
         print 'done'
         dev = np.std(np.abs(quant))
         levelwidth = 2**-3
         print 'level width = %.3f, standard deviation of amplitude: %.3f' %(levelwidth, dev)
         print 'E = %.3f x dev:' %(levelwidth/dev)
-        if opts.plot:
+        if opts.plot and (feng.ant in ants_to_plot):
             pylab.figure(4)
-            pylab.plot(np.imag(quant),label='ANT %d, BAND %s'%(feng.ant,feng.band))
+            pylab.plot(np.real(quant),label='ANT %d, BAND %s'%(feng.ant,feng.band))
             pylab.title("Quantized signal (real part) (normalised to 1)")
             pylab.ylabel("Amplitude (linear)")
             pylab.xlabel("Channel Number")

@@ -76,10 +76,11 @@ class AmiDC(object):
         else:
             self.program_all()
 
-    def set_walsh(self, period=3, noise=15):
+    def set_walsh(self, period=5, noise=15):
         for feng in self.fengs:
-            dat = feng.set_walsh(self.n_ants, noise, feng.ant + 1, period)
-            # Also write to the same roaches GPIO outputs.
+            # use 2*n_ant walsh functions so we can skip the 0th one and still have a spare for noise
+            dat = feng.set_walsh(2*self.n_ants, noise, feng.ant + 1, period)
+            # Also write to the same roach's GPIO outputs.
             feng.roachhost.write('gpio_switch_states', dat.tostring())
 
     def set_phase_switches(self, override=None):
@@ -135,7 +136,7 @@ class AmiDC(object):
             self._logger.error("You can't arm X-Engine vaccs less than 2 seconds in the future")
             raise RuntimeError("You can't arm X-Engine vaccs less than 2 seconds in the future")
         arm_mcnt = self.time_to_mcnt(armtime)
-        self._logger.info("Arming Xengines at %s (MCNT: %d, 0x%8x)"%(time.ctime(armtime), arm_mcnt, arm_mcnt))
+        self._logger.info("Arming Xengines at %s (MCNT: %d, 0x%8x, (bottom 20 bits: %d))"%(time.ctime(armtime), arm_mcnt, arm_mcnt, arm_mcnt&(2**20 - 1)))
         for xeng in self.xengs:
             xeng.set_vacc_arm(arm_mcnt)
             xeng.reset_vacc()
@@ -162,7 +163,7 @@ class AmiDC(object):
         while self.fengs[0].roachhost.read_int('pps_count') == t:
             time.sleep(0.001)
 
-        self.sync_time=int(time.time())+1
+        self.sync_time=int(time.time())+4
         self._logger.info("Arming F-engine syncs at time %.3f"%self.sync_time)
         self.all_fengs('arm_trigger')
         if send_sync:
@@ -170,6 +171,7 @@ class AmiDC(object):
             self.all_fengs('man_sync')
             self.all_fengs('man_sync')
         self.redis_host.set('sync_time', self.sync_time)
+        time.sleep(4)
         return self.sync_time
 
     def load_sync(self):
@@ -347,11 +349,11 @@ class AmiDC(object):
 
     def enable_tge_output(self):
         self._logger.info("Enabling TGE outputs")
-        self.set_chan_dests(enable_output=True)
+        [feng.gbe_enable(True) for feng in self.fengs]
 
     def disable_tge_output(self):
         self._logger.info("Disabling TGE outputs")
-        self.set_chan_dests(enable_output=False)
+        [feng.gbe_enable(False) for feng in self.fengs]
 
     def reset_tge_flags(self):
         for fn, feng in enumerate(self.fengs):
@@ -411,6 +413,7 @@ class AmiDC(object):
             my_xeng.set_channel_map(comp_chans)
             self.redis_host.set('XENG%d_CHANNEL_MAP'%my_xeng.band, comp_chans)
             self._logger.debug('Xeng %d has channel map %r'%(my_xeng.num, comp_chans))
+            
 
             if feng.adc == 0:
                 flags = ((dest_ip_base & 0xff) + 0) + (sync<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)

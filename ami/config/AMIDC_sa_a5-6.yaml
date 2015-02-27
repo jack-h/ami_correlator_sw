@@ -7,7 +7,10 @@ Configuration:
     #boffile: ami_fx_nofs_cf7e_2015_Jan_27_0028.bof
     #boffile: ami_fx_nofs_cf7e_2015_Jan_28_1741.bof
     #boffile: ami_fx_nofs_cf7e_2015_Feb_04_1137.bof
-    boffile: ami_fx_nofs_cf7e_2015_Feb_04_1857.bof
+    #boffile: ami_fx_nofs_cf7e_2015_Feb_04_1857.bof
+    #boffile: ami_fx_nofs_cf7f_2015_Feb_24_1041.bof
+    #boffile: ami_fx_nofs_cf7g_2015_Feb_25_1755.bof #bad adc1 spi interface
+    boffile: ami_fx_nofs_cf7h_2015_Feb_26_2353.bof
     redis_host: localhost
     redis_port: 6379
     control_interface:
@@ -85,7 +88,7 @@ Array:
 Antennas:
     - ant: 0
       loc: [22.0076, 17.5829, 0.0106]
-      index: 1
+      index: 0
     - ant: 1
       loc: [12.0739, 7.7928, -0.0006]
       index: 1
@@ -178,52 +181,52 @@ FEngine:
           adc: 1
           host: elizabeth
 
-        - ant: 7
+        - ant: 5
           band: low
           adc: 0
           host: felicity
-
-        - ant: 7
-          band: high
-          adc: 1
-          host: felicity
-
-        - ant: 8
-          band: low
-          adc: 0
-          host: grace
-
-        - ant: 8
-          band: high
-          adc: 1
-          host: grace
-
-        - ant: 9
-          band: low
-          adc: 0
-          host: heidi
-
-        - ant: 9
-          band: high
-          adc: 1
-          host: heidi
-
-        - ant: 6
-          band: low
-          adc: 0
-          host: isabel
-
-        - ant: 6
-          band: high
-          adc: 1
-          host: isabel
 
         - ant: 5
+          band: high
+          adc: 1
+          host: felicity
+
+        - ant: 6
+          band: low
+          adc: 0
+          host: grace
+
+        - ant: 6
+          band: high
+          adc: 1
+          host: grace
+
+        - ant: 7
+          band: low
+          adc: 0
+          host: heidi
+
+        - ant: 7
+          band: high
+          adc: 1
+          host: heidi
+
+        - ant: 8
+          band: low
+          adc: 0
+          host: isabel
+
+        - ant: 8
+          band: high
+          adc: 1
+          host: isabel
+
+        - ant: 9
           band: low
           adc: 0
           host: juliet
 
-        - ant: 5
+        - ant: 9
           band: high
           adc: 1
           host: juliet
