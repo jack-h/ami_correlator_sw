@@ -28,11 +28,11 @@ class Roach(katcp.FpgaClient):
         See the python struct manual for details of available formats.
         """
 
-        self._logger.info('Snapping register %s (assuming format %s)'%(name, format))
+        self._logger.debug('Snapping register %s (assuming format %s)'%(name, format))
         n_bytes = struct.calcsize('=%s'%format)
         #d = self.snapshot_get(name, **kwargs)
         d = self.snapshot_get(name, man_trig=True)
-        self._logger.info('Got %d bytes'%d['length'])
+        self._logger.debug('Got %d bytes'%d['length'])
         return np.array(struct.unpack('>%d%s'%(d['length']/n_bytes,format),d['data']))
 
     def calibrate_all_qdr(self, verbosity=1):
