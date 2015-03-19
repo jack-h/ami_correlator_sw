@@ -48,6 +48,8 @@ if __name__ == '__main__':
         help='Use this flag to generate new coefficients. Otherwise, existing coefficients will be used unless they don\'t exist')
     p.add_option('--same', dest='same', action='store_true', default=False,
         help='Use this flag to load the coefficients from feng0 to all F-engines (can\'t be used in conjunction with --new)')
+    p.add_option('--zero', dest='zero', type='string', default=None,
+        help='Comma separated list of antennas to zero')
     p.add_option('-p', '--plot', dest='plot', type='string', default=None,
         help='Antennas to plot. "all": all antennas plotted, "1,2,3": ants 1,2,3 plotted')
 
@@ -61,6 +63,11 @@ if __name__ == '__main__':
     # initialise connection to correlator
     corr = AMI.AmiDC(config_file=config_file, passive=True)
     time.sleep(0.1)
+
+    if opts.zero is not None:
+        zero_ants = map(int, opts.zero.split(','))
+    else:
+        zero_ants = []
 
     # load the existing coefficients
     coeffs = {}
@@ -112,6 +119,8 @@ if __name__ == '__main__':
             #eq[eq>np.mean(eq)*opts.cutoff] = 0
             eq[d<lowlimit] = 0
             eq = eq[::decimation]
+            if feng.ant in zero_ants:
+                eq[:] = 0
             if opts.plot and (feng.ant in ants_to_plot):
                 pylab.figure(2)
                 pylab.plot(eq,label='ANT %d, BAND %s'%(feng.ant,feng.band))
@@ -121,6 +130,7 @@ if __name__ == '__main__':
                 pylab.legend()
             # save eq in a dictionary ready for pickling
             coeffs['ANT%d_%s'%(feng.ant,feng.band)] = eq
+             
 
         else:
             if opts.same:
