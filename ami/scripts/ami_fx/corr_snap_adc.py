@@ -7,6 +7,7 @@ import socket
 import ami.ami as AMI
 import ami.helpers as helpers
 import struct
+import scipy.stats
 
 if __name__ == '__main__':
     from optparse import OptionParser
@@ -14,8 +15,8 @@ if __name__ == '__main__':
     p = OptionParser()
     p.set_usage('%prog [options] [CONFIG_FILE]')
     p.set_description(__doc__)
-    p.add_option('-n', '--noise', dest='noise_switch',action='store_true', default=False,
-        help='Use the noise switches. Default = False')
+    p.add_option('-c', '--per_core', dest='per_core',action='store_true', default=False,
+        help='Plot histograms of each ADC core')
 
     opts, args = p.parse_args(sys.argv[1:])
 
@@ -44,9 +45,35 @@ if __name__ == '__main__':
         pylab.title('ADC values: ROACH %s, ADC %d, (ANT %d, BAND %s)'%(feng.roachhost.host,feng.adc,feng.ant,feng.band))
         pylab.figure(1)
         pylab.subplot(x_plots,y_plots,fn+1)
-        pylab.hist(adc, bins=2**6, range=(-2**7, 2**7), normed=True)
+        pylab.hist(adc, bins=2**5, range=(-2**7, 2**7), normed=True)
         pylab.title('ADC values: ROACH %s, ADC %d, (ANT %d, BAND %s)'%(feng.roachhost.host,feng.adc,feng.ant,feng.band))
-        print 'ANT %d %s band: stddev: %.3f'%(feng.ant, feng.band, np.std(adc))
+
+        if opts.per_core:
+            pylab.figure(2)
+            pylab.suptitle('Core 0')
+            pylab.subplot(x_plots,y_plots,fn+1)
+            pylab.hist(adc[0::4], bins=2**5, range=(-2**7, 2**7), normed=True)
+            pylab.title('ADC values: ROACH %s, ADC %d, (ANT %d, BAND %s)'%(feng.roachhost.host,feng.adc,feng.ant,feng.band))
+
+            pylab.figure(3)
+            pylab.suptitle('Core 1')
+            pylab.subplot(x_plots,y_plots,fn+1)
+            pylab.hist(adc[1::4], bins=2**5, range=(-2**7, 2**7), normed=True)
+            pylab.title('ADC values: ROACH %s, ADC %d, (ANT %d, BAND %s)'%(feng.roachhost.host,feng.adc,feng.ant,feng.band))
+
+            pylab.figure(4)
+            pylab.suptitle('Core 2')
+            pylab.subplot(x_plots,y_plots,fn+1)
+            pylab.hist(adc[2::4], bins=2**5, range=(-2**7, 2**7), normed=True)
+            pylab.title('ADC values: ROACH %s, ADC %d, (ANT %d, BAND %s)'%(feng.roachhost.host,feng.adc,feng.ant,feng.band))
+
+            pylab.figure(5)
+            pylab.suptitle('Core 3')
+            pylab.subplot(x_plots,y_plots,fn+1)
+            pylab.hist(adc[3::4], bins=2**5, range=(-2**7, 2**7), normed=True)
+            pylab.title('ADC values: ROACH %s, ADC %d, (ANT %d, BAND %s)'%(feng.roachhost.host,feng.adc,feng.ant,feng.band))
+
+        print 'ANT %d %s band: Signal std dev: %.3f'%(feng.ant, feng.band, np.std(adc))
 
     print ''
     pylab.show()
