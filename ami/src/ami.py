@@ -78,8 +78,7 @@ class AmiDC(object):
 
     def set_walsh(self, period=5, noise=15):
         for feng in self.fengs:
-            # use 2*n_ant walsh functions so we can skip the 0th one and still have a spare for noise
-            dat = feng.set_walsh(2*self.n_ants, noise, feng.ant + 1, period)
+            dat = feng.set_walsh(2*self.n_ants, noise, feng.phase_walsh, period)
             # Also write to the same roach's GPIO outputs.
             feng.roachhost.write('gpio_switch_states', dat.tostring())
 
@@ -266,6 +265,21 @@ class AmiDC(object):
                                       num=fn, **feng_attrs))
         self.n_fengs = len(self.fengs)
         self._logger.info('%d F-engines constructed'%self.n_fengs)
+
+    def noise_switched_from_redis(self):
+        noise_switched_data = np.zeros([self.n_ants, self.fengs[0].n_chans*self.n_bands], dtype=np.float32)
+        for fn, feng in enumerate(self.fengs):
+            ant_index = self.config['Antennas'][feng.ant]['index']
+            from_redis = self.redis_host.get('STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band))
+            if from_redis is not None:
+                if feng.band == 'high':
+                    noise_switched_data[ant_index,feng.n_chans:2*feng.n_chans] = from_redis
+                elif feng.band == 'low':
+                    noise_switched_data[ant_index,0:feng.n_chans] = from_redis
+            else:
+                logger.warning('Couldn\'t get Redis key STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band))
+        return noise_switched_data
+
 
     def enable_debug_mac(self, debug_mac):
         for xn, xeng in enumerate(self.xengs):
