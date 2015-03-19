@@ -31,9 +31,20 @@ if __name__ == '__main__':
     corr = AMI.AmiSbl(config_file=config_file, passive=True, skip_prog=True)
     time.sleep(0.1)
 
+    if opts.noise_switch:
+        scale_factor = 2
+    else:
+        scale_factor = 1
+
     for feng in corr.fengs:
         feng.noise_switch_enable(opts.noise_switch)
-        print '%15s, ADC %d (ANT:%d, BAND:%s): %f'%(feng.host, feng.adc, feng.ant+1, feng.band, feng.get_adc_power())
+
+    #wait a couple of integrations to flush data with the wrong noise switch state
+    corr.fengs[0].get_adc_power()
+    corr.fengs[0].get_adc_power()
+
+    for feng in corr.fengs:
+        print '%15s, ADC %d (ANT:%d, BAND:%s): %f'%(feng.host, feng.adc, feng.ant+1, feng.band, np.sqrt(scale_factor*feng.get_adc_power()))
 
         
 

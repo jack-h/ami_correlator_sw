@@ -105,7 +105,7 @@ class Engine(object):
         Useful if you want to get a list of registers present in an engine
         from a listdev() call to the engines host ROACH.
         """
-        return name.rstrip(self.reg_suffix).lstrip(self.reg_prefix)
+        return name[len(self.reg_prefix):len(name)-len(self.reg_suffix)]
 
     def write_int(self, dev_name, integer, *args, **kwargs):
         """
@@ -436,7 +436,7 @@ class FEngine(Engine):
         v += (self.read_uint('adc_sum_sq1') << 32)
         if v > (2**63 - 1):
             v -= 2**64
-        return np.sqrt(float(v) / (16 * 256 * (self.adc_power_acc_len >> (8 + 4))))
+        return np.abs(float(v) / (16 * 256 * (self.adc_power_acc_len >> (8 + 4))))
 
     def get_spectra(self, autoflip=False):
         d = np.zeros(self.n_chans)
