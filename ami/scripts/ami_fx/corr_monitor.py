@@ -6,7 +6,10 @@ import numpy as np
 import pylab
 import socket
 import ami.ami as AMI
-from ami.helpers import uint2int, dbs
+from ami.helpers import uint2int, dbs, add_default_log_handlers
+import logging
+
+logger = add_default_log_handlers(logging.getLogger("%s:%s"%(__file__,__name__)))
 
 if __name__ == '__main__':
     from optparse import OptionParser
@@ -55,7 +58,7 @@ if __name__ == '__main__':
             key = 'STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band)
             d = spectra[fn] * np.abs(eq[fn])**2
             corr.redis_host.set(key, d.tolist(), ex=expire_time)
-        print 'New monitor data sent at time', time.time()
+        logger.info('New monitor data sent at time %.2f'%time.time())
         print opts.plot, grab_n
         if opts.plot != 0:
             x += spectra * np.abs(eq)**2
