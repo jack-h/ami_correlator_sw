@@ -56,6 +56,8 @@ if __name__ == '__main__':
         help='Take FFT of time axis to go to fringe (Hz) space.')
     o.add_option('-S', '--swapri', dest='swapri', action='store_true',
         help='swap the real/imag components (for use with messed up data files pre 6pm 11/03/2014)')
+    o.add_option('--submean', dest='submean', action='store_true', default=False,
+        help='Remove the mean (along the time axis) from data')
     o.add_option('--shape', dest='shape', default=None,
         help='x_y dimensions of subplot. Default: squareish')
     opts, args = o.parse_args(sys.argv[1:])
@@ -348,6 +350,8 @@ for cnt,bl in enumerate(bl_index):
             print di.shape
             di=numpy.ma.array(di,mask=flags[:,:,cnt,pi])
             di=di.filled(0)
+        if opts.submean:
+            di -= numpy.mean(di, axis=0)
         if opts.delay:
             di = numpy.fft.ifft(di,axis=1)
             di = numpy.concatenate([di[:,di.shape[1]/2:], di[:,:di.shape[1]/2]], axis=1)
