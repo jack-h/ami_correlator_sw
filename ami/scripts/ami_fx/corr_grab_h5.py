@@ -145,6 +145,7 @@ if __name__ == '__main__':
     last_int = 0
     current_obs = None
     receiver_enable = False
+    last_recv_rst = time.time()
     while True:
         data= s.recv(pkt_size)
         mcnt, xeng, offset = struct.unpack('>qll', data[0:header_size])
@@ -189,20 +190,19 @@ if __name__ == '__main__':
                     fname = 'corr_TEST_%d.h5'%(time.time())
                     writer.start_new_file(fname)
                     current_obs = 'test'
+                    receiver_enable = True
 
             win_to_ship = (buf_id - (N_WINDOWS // 2)) % N_WINDOWS
 	    this_int = time.time()
+            logger.info('got window %d after %.4f seconds (mcnt offset %.4f), shipping window %d (time %.5f)'%(buf_id, this_int - last_int, tsbuf[win_to_ship] - tsbuf[(win_to_ship-1)%N_WINDOWS], win_to_ship, tsbuf[win_to_ship]))
             if receiver_enable or opts.nometa:
                 # When the buffer ID changes, ship the window 1/2 a circ. buffer behind
-                logger.info('got window %d, shipping window %d (time %.5f)'%(buf_id, win_to_ship, tsbuf[win_to_ship]))
                 if datctr[win_to_ship] == corr_chans:
-                    logger.info('# New integration is complete after %.2f seconds (mcnt offset %.2f) #'%(this_int - last_int, tsbuf[win_to_ship] - tsbuf[(win_to_ship-1)%N_WINDOWS]))
+                    #logger.info('# New integration is complete after %.2f seconds (mcnt offset %.2f) #'%(this_int - last_int, tsbuf[win_to_ship] - tsbuf[(win_to_ship-1)%N_WINDOWS]))
                     datavec = np.reshape(datbuf[win_to_ship], [corr.n_bands * 2048, corr.n_bls, 1, 2]) #chans * bls * pols * r/i
-                    time.sleep(0.5)
                     # Write integration
                     phased_to = np.array([corr.array.get_sidereal_time(tsbuf[win_to_ship]), corr.array.lat_r])
-                    noise_switched_data = np.zeros([corr.n_ants, corr.fengs[0].n_chans*corr.n_bands], dtype=np.float32)
-                    write_data(writer,datavec,tsbuf[win_to_ship], meta_buf[win_to_ship], noise_demod=noise_switched_data, phased_to=phased_to)
+                    write_data(writer,datavec,tsbuf[win_to_ship], meta_buf[win_to_ship], noise_demod=corr.noise_switched_from_redis(), phased_to=phased_to)
                     # Write to redis
                     redis.Redis.set(corr.redis_host, 'RECEIVER:xeng_raw0', datavec[:].tostring())
                     corr.redis_host.set('RECEIVER:timestamp0', tsbuf[win_to_ship])
@@ -217,7 +217,12 @@ if __name__ == '__main__':
                  
         else:
             if tsbuf[buf_id] != last_timestamp:
-                logger.error('(check 2) -- timestamp desync! This timestamp (xeng %d) is %.5f, last one was %.5f'%(xeng, tsbuf[buf_id], last_timestamp))
+                if time.time() > (last_recv_rst + 5): #don't allow a reset until at least 5s after the last
+                    logger.error('(check 2) -- timestamp desync! This timestamp (xeng %d) is %.5f, last one was %.5f'%(xeng, tsbuf[buf_id], last_timestamp))
+                    logger.info('Rearming vaccs!')
+                    corr.arm_vaccs(time.time() + 5)
+                    [xeng.reset_gbe() for xeng in corr.xengs]
+                    last_recv_rst = time.time()
 
 
         datbuf[buf_id, buf_loc] = np.fromstring(data[header_size:], dtype='>i')
