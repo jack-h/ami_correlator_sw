@@ -29,13 +29,31 @@ def signal_handler(signum, frame):
         pass
     exit()
 
+def gen_reduce_bl_order(nants):
+    rv = []
+    for i in range(nants):
+        for j in range(i, nants):
+            rv += [[i,j]]
+    return rv
+
+def gen_casper2reduce_bls(nants, blorder, reduce_order=None):
+    rv = []
+    if reduce_order is None:
+        reduce_order = gen_reduce_bl_order(nants)
+    for bl in reduce_order:
+        for cn, cbl in enumerate(blorder):
+            if (bl[0] == cbl[0]) and (bl[1] == cbl[1]):
+                rv += [{'conj':False, 'bl':cn}]
+            elif (bl[0] == cbl[0]) and (bl[1] == cbl[1]):
+                rv += [{'conj':True, 'bl':cn}]
+    return rv
+
+
 if __name__ == '__main__':
     from optparse import OptionParser
 
     p = OptionParser()
     p.set_usage('%prog [options] [CONFIG_FILE]')
-    p.add_option('-b', '--baseline', dest='baseline', type='string', default='4,5', 
-        help='Baseline to send to control server. ANTENNA NUMBERING FROM ZERO!!!')
     p.set_description(__doc__)
 
     opts, args = p.parse_args(sys.argv[1:])
@@ -50,15 +68,26 @@ if __name__ == '__main__':
     corr = AMI.AmiDC()
     time.sleep(0.1)
 
-    baseline = np.array(map(int, opts.baseline.split(',')))
-    for bl_n, bl in enumerate(corr.bl_order):
-        if (bl == baseline).all() or (bl == baseline[::-1]).all():
-            baseline_n = bl_n
+    # get the correlator data from redis
+    #BLS_TO_SEND = [[4,5]]
+    #BLS_TO_SEND = [[4,5], [4,6], [5,6]]
+    BLS_TO_SEND = [[0,1], [0,2], [0,3], [0,4], [0,5], [0,6], [0,7], [0,8], [0,9],
+                   [1,2], [1,3], [1,4], [1,5], [1,6], [1,7], [1,8], [1,9],
+                   [2,3], [2,4], [2,5], [2,6], [2,7], [2,8], [2,9],
+                   [3,4], [3,5], [3,6], [3,7], [3,8], [3,9],
+                   [4,5], [4,6], [4,7], [4,8], [4,9],
+                   [5,6], [5,7], [5,8], [5,9],
+                   [6,7], [6,8], [6,9],
+                   [7,8], [7,9],
+                   [8,9]]
+    corrdat = np.fromstring(redis.Redis.get(corr.redis_host, 'RECEIVER:xeng_raw0'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
+    corrdat_txbuf = np.zeros_like(corrdat[:, range(len(BLS_TO_SEND)), :, :])
+    reduce_bl_order = gen_casper2reduce_bls(corr.n_ants, corr.bl_order, reduce_order=BLS_TO_SEND)
+    print 'REDUCE baseline order:', reduce_bl_order
 
-    print 'Sending baseline', baseline, '(index %d)'%baseline_n
-    
-
-    ctrl = control.AmiControlInterface(config_file=config_file)
+    ctrl = control.AmiControlInterface(config_file=config_file, rain_gauge=True)
+    # hack the number of baselines to the correct size
+    ctrl.data = control.DataStruct(n_chans=2*2048, n_bls=len(BLS_TO_SEND), n_ants=corr.n_ants, rain_gauge=True)
     ctrl.connect_sockets()
 
     # first get some meta data, as this encodes the source name
@@ -89,11 +118,30 @@ if __name__ == '__main__':
             # Only check for new correlations if we have new meta data
             if ts != last_corr_time:
                 corrdat = np.fromstring(redis.Redis.get(corr.redis_host, 'RECEIVER:xeng_raw0'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
-                corr_shape = corrdat.shape
-                print 'Sending 1 baseline to control pc'
+                for bln, bl in enumerate(reduce_bl_order):
+                    corrdat_txbuf[:,bln,:,:] = corrdat[:,bl['bl'],:,:]
+                    if bl['conj']:
+                        corrdat_txbuf[:,bln,:,0] *= -1
+                rain_gauge = corr.noise_switched_from_redis()
+                #pylab.subplot(3,1,1)
+                #pylab.plot(rain_gauge[4])
+                for i in range(corr.n_ants):
+                    for bn, bl in enumerate(corr.bl_order):
+                        if bl == (4,4): #must be tuple, not list
+                            rain_gauge[i] /= corrdat[:,bn,0,1]
+                rain_gauge *= 1e10 #vaguely scale to unity
+                #pylab.subplot(3,1,3)
+                #pylab.plot(rain_gauge[4])
+                #pylab.show()
+                #rain_gauge = np.arange(corr.n_ants * corr.n_bands * 2048, dtype=np.float32)
+                       
+                print 'Sending baselines to control pc'
                 #pylab.plot(corrdat[:, baseline_n, 0, :])
                 #pylab.show()
-                ctrl.try_send(ts, 1, corr_cnt, corrdat[:,baseline_n,0,:].reshape(corr_shape[0]*2))
+                ctrl.try_send(ts, 1, corr_cnt, corrdat_txbuf.transpose([1,0,2,3]).flatten(), rain_gauge)
+                #for ln, l in enumerate(corrdat_txbuf.transpose([1,0,2,3]).flatten()):
+                #    print ln//2, l
+                print 'sent'
                 last_corr_time = ts
                 corr_cnt += 1
             
