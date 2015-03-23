@@ -4,6 +4,7 @@ import os
 import string
 import config_redis
 import yaml
+import numpy as np
 
 class AmiControlInterface(object):
     """
@@ -12,7 +13,7 @@ class AmiControlInterface(object):
     This handles passing meta data messages to the digital correlator
     and digital correlator data sets to the original pipeline
     """
-    def __init__(self,config_file=None):
+    def __init__(self,config_file=None, rain_gauge=False):
         """
         Initialise the interface, based on the config_file provided, or the AMI_DC_CONF
         environment variable is config_file=None
@@ -26,9 +27,10 @@ class AmiControlInterface(object):
         else:
             self.config = yaml.load(config_file)
         self.parse_config_file()
+        self.rain_gauge = rain_gauge
         self.meta_data = get_meta_struct(maxant=self.n_ants, maxagc=self.n_agcs)
         print 'meta data size:', self.meta_data.size
-        self.data = DataStruct(n_chans=self.n_chans*self.n_bands)
+        self.data = DataStruct(n_chans=self.n_chans*self.n_bands,n_bls=self.n_bls, n_ants=self.n_ants, rain_gauge=self.rain_gauge)
 
     def __del__(self):
         try:
@@ -47,6 +49,7 @@ class AmiControlInterface(object):
         self.n_agcs      = self.config['Configuration']['control_interface']['n_agcs']
         self.n_chans     = self.config['FEngine']['n_chans']
         self.n_bands     = self.config['Configuration']['correlator']['hardcoded']['n_bands']
+        self.n_bls       = (self.n_ants * (self.n_ants + 1)) / 2
     def _bind_sockets(self):
         """
         Bind the sockets to the data and metadata server
@@ -83,12 +86,15 @@ class AmiControlInterface(object):
         if len(d) == self.meta_data.size:
             self.meta_data.extract_attr(d)
             return 0
-    def try_send(self, timestamp, status, nsamp, d):
+    def try_send(self, timestamp, status, nsamp, d, rain_gauge=None):
         """
         Try and send a data set to the control server.
         Return 0 if successful, -1 if not (and close tx socket)
         """
-        data_str = self.data.pack(timestamp, status, nsamp, *d)
+        if rain_gauge is not None:
+            data_str = self.data.pack(timestamp, status, nsamp, *np.append(d, rain_gauge))
+        else:
+            data_str = self.data.pack(timestamp, status, nsamp, *d)
         try:
             self.tsock.send(data_str)
             return 0
@@ -259,10 +265,13 @@ class DataStruct(struct.Struct):
     """
     A subclass of Struct to encapsulate correlator data and timestamp
     """
-    def __init__(self, n_chans=2048):
+    def __init__(self, n_chans=2048, n_bls=1, n_ants=10, rain_gauge=False):
         """
         Initialise a data structure for a timestamp, status flag, count number,
         and n_chans oof complex data.
         """
-        form = '!lii%dl'%(2*n_chans)
+        if not rain_gauge:
+            form = '!lii%dl'%(2*n_chans*n_bls)
+        else:
+            form = '!lii%dl%df'%((2*n_chans*n_bls), n_chans*n_ants)
         struct.Struct.__init__(self,form)
