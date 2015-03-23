@@ -98,11 +98,11 @@ if __name__ == '__main__':
         # snap some data
         #pylab.figure()
         n_plots = len(corr.fengs)
-        #for fn,feng in enumerate(corr.fengs):
-        #    adc = feng.snap('snapshot_adc', man_trig=True, format='b', wait_period=1)
-        #    pylab.subplot(n_plots,1,fn)
-        #    pylab.plot(adc)
-        #    pylab.title('ADC values: ROACH %s, ADC %d, (ANT %d, BAND %s)'%(feng.roachhost.host,feng.adc,feng.ant,feng.band))
+        for fn,feng in enumerate(corr.fengs):
+            adc = feng.snap('snapshot_adc', man_trig=True, format='b', wait_period=1)
+            pylab.subplot(n_plots,1,fn)
+            pylab.plot(adc)
+            pylab.title('ADC values: ROACH %s, ADC %d, (ANT %d, BAND %s)'%(feng.roachhost.host,feng.adc,feng.ant,feng.band))
 
         pylab.figure()
         for fn,feng in enumerate(corr.fengs):
