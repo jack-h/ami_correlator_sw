@@ -6,6 +6,7 @@
 172.24.225.27   amipcb  amipcb.ra.phy.private.cam.ac.uk
 172.24.225.217  amisdc  amisdc.ra.phy.private.cam.ac.uk
 172.24.225.219  amildc  amildc.ra.phy.private.cam.ac.uk
+131.111.48.18   amidr   amidr.ra.phy.cam.ac.uk
 127.0.0.1 ami_redis_host
 
 # AMI small array

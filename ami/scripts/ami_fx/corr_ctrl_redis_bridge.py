@@ -129,6 +129,7 @@ if __name__ == '__main__':
                     for bn, bl in enumerate(corr.bl_order):
                         if bl == (4,4): #must be tuple, not list
                             rain_gauge[i] /= corrdat[:,bn,0,1]
+                            rain_gauge[i][corrdat[:,bn,0,1]==0] = 0
                 rain_gauge *= 1e10 #vaguely scale to unity
                 #pylab.subplot(3,1,3)
                 #pylab.plot(rain_gauge[4])

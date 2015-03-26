@@ -171,7 +171,8 @@ if __name__ == '__main__':
                     writer.close_file()
                 elif file_meta['obs_def:name'] != current_obs:
                     writer.close_file()
-                    fname = 'corr_%s_%d.h5'%(file_meta['obs_def:file'], meta_buf[buf_id]['timestamp'])
+                    # fname = 'corr_%s_%d.h5'%(file_meta['obs_def:file'], meta_buf[buf_id]['timestamp'])
+                    fname = '%s.h5'%(file_meta['obs_def:file'])
                     if not opts.test_tx:
                         logger.info("Starting a new file with name %s"%fname)
                         writer.start_new_file(fname)

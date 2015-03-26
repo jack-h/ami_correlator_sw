@@ -126,7 +126,7 @@ FEngine:
     #(but at the moment it can only be a number <= 20 bits)
     fft_power_acc_len: 1048575
     adc_clk: 5000
-    mix_freq: 9000
+    mix_freq: 8500
     eq_dec: 2
     eq_format: 'H'
     eq_bp: 6
