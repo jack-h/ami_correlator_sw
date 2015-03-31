@@ -96,43 +96,42 @@ if __name__ == '__main__':
         # turn off noise switch so we can sample powers
         feng.noise_switch_enable(False)
         time.sleep(1)
-        if load_new:
-            print "Computing new coefficients"
-            d = np.zeros(vec_width)
-            for n in range(opts.samples):
-                print '%d: Snapping data from ANT: %d, BAND: %s'%(n,feng.ant,feng.band)
-                d += feng.get_spectra()
-            # calculate target mean power, scaled for 4 bits
-            d /= float(opts.samples)
-            mean_power = np.mean(d)
-            lowlimit = mean_power / float(opts.cutoff)
-            if opts.plot and (feng.ant in ants_to_plot):
-                pylab.figure(1)
-                pylab.plot(dbs(d),label='ANT %d, BAND %s'%(feng.ant,feng.band))
-                pylab.axhline(y=10*np.log10(lowlimit),label='ANT %d, BAND %s limit'%(feng.ant,feng.band), color=pylab.gca().lines[-1].get_color())
-                pylab.legend()
-                pylab.title("Autocorrelation Passbands")
-                pylab.ylabel("Power (db)")
-                pylab.xlabel("Decimated Channel Number")
+        print "Computing new coefficients"
+        d = np.zeros(vec_width)
+        for n in range(opts.samples):
+            print '%d: Snapping data from ANT: %d, BAND: %s'%(n,feng.ant,feng.band)
+            d += feng.get_spectra()
+        # calculate target mean power, scaled for 4 bits
+        d /= float(opts.samples)
+        mean_power = np.mean(d)
+        lowlimit = mean_power / float(opts.cutoff)
+        if opts.plot and (feng.ant in ants_to_plot):
+            pylab.figure(1)
+            pylab.plot(dbs(d),label='ANT %d, BAND %s'%(feng.ant,feng.band))
+            pylab.axhline(y=10*np.log10(lowlimit),label='ANT %d, BAND %s limit'%(feng.ant,feng.band), color=pylab.gca().lines[-1].get_color())
+            pylab.legend()
+            pylab.title("Autocorrelation Passbands")
+            pylab.ylabel("Power (db)")
+            pylab.xlabel("Decimated Channel Number")
 
-            eq = (np.sqrt(1./d)) * opts.targetpower
-            #eq[eq>np.mean(eq)*opts.cutoff] = 0
-            eq[d<lowlimit] = 0
-            eq = eq[::decimation]
-            if feng.ant in zero_ants:
-                eq[:] = 0
-            if opts.plot and (feng.ant in ants_to_plot):
-                pylab.figure(2)
-                pylab.plot(eq,label='ANT %d, BAND %s'%(feng.ant,feng.band))
-                pylab.title("EQ coefficients")
-                pylab.ylabel("Amplitude (linear)")
-                pylab.xlabel("Decimated Channel Number")
-                pylab.legend()
-            # save eq in a dictionary ready for pickling
-            coeffs['ANT%d_%s'%(feng.ant,feng.band)] = eq
+        eq = (np.sqrt(1./d)) * opts.targetpower
+        #eq[eq>np.mean(eq)*opts.cutoff] = 0
+        eq[d<lowlimit] = 0
+        eq = eq[::decimation]
+        if feng.ant in zero_ants:
+            eq[:] = 0
+        if opts.plot and (feng.ant in ants_to_plot):
+            pylab.figure(2)
+            pylab.plot(eq,label='ANT %d, BAND %s'%(feng.ant,feng.band))
+            pylab.title("EQ coefficients")
+            pylab.ylabel("Amplitude (linear)")
+            pylab.xlabel("Decimated Channel Number")
+            pylab.legend()
+        # save eq in a dictionary ready for pickling
+        coeffs['ANT%d_%s'%(feng.ant,feng.band)] = eq
              
 
-        else:
+        if not load_new:
             if opts.same:
                 print 'Using feng0 coefficients'
                 eq = coeffs['ANT%d_%s'%(corr.fengs[0].ant,corr.fengs[0].band)]
