@@ -116,34 +116,34 @@ if __name__ == '__main__':
             # bridge correlator data from redis -> control socket
             ts = corr.redis_host.get('RECEIVER:timestamp0')
             # Only check for new correlations if we have new meta data
-            if ts != last_corr_time:
-                corrdat = np.fromstring(redis.Redis.get(corr.redis_host, 'RECEIVER:xeng_raw0'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
-                for bln, bl in enumerate(reduce_bl_order):
-                    corrdat_txbuf[:,bln,:,:] = corrdat[:,bl['bl'],:,:]
-                    if bl['conj']:
-                        corrdat_txbuf[:,bln,:,0] *= -1
-                rain_gauge = corr.noise_switched_from_redis()
-                #pylab.subplot(3,1,1)
-                #pylab.plot(rain_gauge[4])
-                for i in range(corr.n_ants):
-                    for bn, bl in enumerate(corr.bl_order):
-                        if bl == (4,4): #must be tuple, not list
-                            rain_gauge[i] /= corrdat[:,bn,0,1]
-                            rain_gauge[i][corrdat[:,bn,0,1]==0] = 0
-                rain_gauge *= 1e10 #vaguely scale to unity
-                #pylab.subplot(3,1,3)
-                #pylab.plot(rain_gauge[4])
-                #pylab.show()
-                #rain_gauge = np.arange(corr.n_ants * corr.n_bands * 2048, dtype=np.float32)
-                       
-                print 'Sending baselines to control pc'
-                #pylab.plot(corrdat[:, baseline_n, 0, :])
-                #pylab.show()
-                ctrl.try_send(ts, 1, corr_cnt, corrdat_txbuf.transpose([1,0,2,3]).flatten(), rain_gauge)
-                #for ln, l in enumerate(corrdat_txbuf.transpose([1,0,2,3]).flatten()):
-                #    print ln//2, l
-                print 'sent'
-                last_corr_time = ts
-                corr_cnt += 1
+            #if ts != last_corr_time:
+            corrdat = np.fromstring(redis.Redis.get(corr.redis_host, 'RECEIVER:xeng_raw0'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
+            for bln, bl in enumerate(reduce_bl_order):
+                corrdat_txbuf[:,bln,:,:] = corrdat[:,bl['bl'],:,:]
+                if bl['conj']:
+                    corrdat_txbuf[:,bln,:,0] *= -1
+            rain_gauge = corr.noise_switched_from_redis()
+            #pylab.subplot(3,1,1)
+            #pylab.plot(rain_gauge[4])
+            for i in range(corr.n_ants):
+                for bn, bl in enumerate(corr.bl_order):
+                    if bl == (4,4): #must be tuple, not list
+                        rain_gauge[i] /= corrdat[:,bn,0,1]
+                        rain_gauge[i][corrdat[:,bn,0,1]==0] = 0
+            rain_gauge *= 1e10 #vaguely scale to unity
+            #pylab.subplot(3,1,3)
+            #pylab.plot(rain_gauge[4])
+            #pylab.show()
+            #rain_gauge = np.arange(corr.n_ants * corr.n_bands * 2048, dtype=np.float32)
+                      
+            print 'Sending baselines to control pc'
+            #pylab.plot(corrdat[:, baseline_n, 0, :])
+            #pylab.show()
+            ctrl.try_send(ts, 1, corr_cnt, corrdat_txbuf.transpose([1,0,2,3]).flatten(), rain_gauge)
+            #for ln, l in enumerate(corrdat_txbuf.transpose([1,0,2,3]).flatten()):
+            #    print ln//2, l
+            print 'sent'
+            last_corr_time = ts
+            corr_cnt += 1
             
         time.sleep(0.1)
