@@ -31,8 +31,7 @@ if __name__ == '__main__':
     s = corr.do_for_all('get_spectra', corr.fengs) #flush one to give time for the noise switch state to chance
     s = corr.do_for_all('get_spectra', corr.fengs)
     for fn, feng in enumerate(corr.fengs):
-        if feng.ant in [4,5,6]:
-            pylab.plot(dbs(s[fn]), label='ANT %d, %s band'%(feng.ant+1, feng.band))
+        pylab.plot(dbs(s[fn]), label='ANT %d, %s band'%(feng.ant+1, feng.band))
 
     for feng in corr.fengs:
         feng.noise_switch_enable(True)
