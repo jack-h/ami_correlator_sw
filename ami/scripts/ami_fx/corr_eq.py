@@ -164,6 +164,8 @@ if __name__ == '__main__':
             pylab.xlabel("Channel Number")
             pylab.legend()
 
+        feng.noise_switch_enable(True)
+
 
     # save new coeffs if there are some
     if load_new:
