@@ -127,7 +127,7 @@ if __name__ == '__main__':
             #pylab.plot(rain_gauge[4])
             for i in range(corr.n_ants):
                 for bn, bl in enumerate(corr.bl_order):
-                    if bl == (4,4): #must be tuple, not list
+                    if bl == (i,i): #must be tuple, not list
                         rain_gauge[i] /= corrdat[:,bn,0,1]
                         rain_gauge[i][corrdat[:,bn,0,1]==0] = 0
             rain_gauge *= 1e10 #vaguely scale to unity
