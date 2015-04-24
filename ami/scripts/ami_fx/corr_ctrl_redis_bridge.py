@@ -99,7 +99,7 @@ if __name__ == '__main__':
     print "Got meta data"
     print "Current status", ctrl.meta_data.obs_status.val
     print "Current source", ctrl.meta_data.obs_def.name.val
-    print "Current RA,dec", ctrl.meta_data.obsra.val, ctrl.meta_data.obsdec.val
+    print "Current RA,dec", ctrl.meta_data.smp_ra.val, ctrl.meta_data.smp_dec.val
     print "Current nsamp,HA", ctrl.meta_data.nsamp, ctrl.meta_data.ha_reqd.val
 
 
