@@ -336,27 +336,14 @@ class AmiDC(object):
         for xn, xeng in enumerate(self.xengs):
             xeng.board_ip = base_ip_int + 4*xn #board level IP. ports have this address + {0..3}
             for i in range(4):
-                # try to kill any existing tap
-                try:
-                    self._logger.info('Trying to stop TGE tap core%d'%i)
-                    xeng.roachhost.tap_stop('core%d'%i)
-                    self._logger.info('stopped successfully')
-                except:
-                    self._logger.info('tap_stop failed')
-                    
                 self._logger.info('Starting TGE tap core%d on %s'%(i, xeng.hostname))
                 ip = xeng.board_ip + i
                 mac = 0x02000000 + ip
                 port = 10000
                 self._logger.info('mac: 0x%x, ip: %s, port: %d'%(mac, helpers.ip_int2str(ip), port))
-                xeng.roachhost.tap_start('core%d'%i, 'network_link%d_core'%(i+1),
-                                         mac, ip, port)
-                xeng.roachhost.tap_stop('core%d'%i)
+                mac_table = [0x2000000 + (base_ip_int & 0xffffff00) + m for m in range(256)]
+                xeng.roachhost.config_10gbe_core('network_link%d_core'%(i+1), mac, ip, port, mac_table)
 
-                # manually populate the mac table
-                for m in range(256):
-                    mac_str = struct.pack('>Q', 0x02000000 + (base_ip_int & 0xffffff00) + m)
-                    xeng.roachhost.write('network_link%d_core'%(i+1), mac_str, offset=(0x3000+8*m))
         for n, ip in enumerate(self.band2ip):
             self._logger.info('band to ip mapping: band %d -> ip %s'%(n, helpers.ip_int2str(ip)))
                 
