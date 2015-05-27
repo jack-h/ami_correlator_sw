@@ -319,19 +319,22 @@ class Qdr(object):
         cal = False
         out_step = 0
         in_delays = [0 for bit in range(36)]
-        for out_step in range(32):
-            #if verbosity > 0:
-            #    print 'Looking for any good bits with out delay %d'%out_step
-            self.apply_cals(in_delays,
-                            out_delays=[out_step for bit in range(36)],
-                            clk_delay=out_step,verbosity=verbosity)
+        self.qdr_reset()
+        for out_step in range(31):
+            ##if verbosity > 0:
+            ##    print 'Looking for any good bits with out delay %d'%out_step
+            #self.apply_cals(in_delays,
+            #                out_delays=[out_step for bit in range(36)],
+            #                clk_delay=out_step,verbosity=verbosity)
             if self.qdr_check_cal_any_good(verbosity=verbosity):
                 break
+            self.qdr_delay_out_step(2**36 - 1, 1)
+            self.qdr_delay_clk_step(1)
 
-        # reset all the in delays to zero, and the out delays to this iteration.
-        self.apply_cals(in_delays,
-                        out_delays=[out_step for bit in range(36)],
-                        clk_delay=out_step,verbosity=verbosity)
+        ## reset all the in delays to zero, and the out delays to this iteration.
+        #self.apply_cals(in_delays,
+        #                out_delays=[out_step for bit in range(36)],
+        #                clk_delay=out_step,verbosity=verbosity)
         if verbosity > 0:
             print "--- === Trying with OUT DELAYS to %i === ---" % out_step,
             print 'was: %i' % self.qdr_delay_clk_get()
