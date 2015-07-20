@@ -84,8 +84,8 @@ XEngine:
 
 Array:
     # array location in degrees
-    lat: 52.2050
-    lon: 0.1190
+    lat: 52.164333
+    lon: 0.039361
 
 Antennas:
     - ant: 0
