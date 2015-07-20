@@ -1,0 +1,190 @@
+Configuration:
+    katcp_port: 7147
+    boffile: ami_fx_nofs_cf7f_2015_Feb_23_1738.bof
+    redis_host: localhost
+    redis_port: 6379
+    control_interface:
+        host: 10.1.0.10
+        data_port: 2007
+        meta_port: 2006
+        n_ants: 10
+        n_agcs: 40
+    correlator:
+        hardcoded:
+            n_ants: 8
+            n_bands: 2
+            n_chans: 2048
+            inputs_per_board: 2
+            window_len: 1024
+            output_format: l
+            n_pols: 1
+        runtime:
+            fft_shift: 0b111011011011011
+            ten_gbe:
+                network: 10.1.10.100
+                #port: 10000
+            one_gbe:
+                dest_ip: 10.1.1.1
+                dest_mac: 0x90E2BA75D060
+                port: 10000
+            testing:
+                ct_tvg: no
+                qdr_tvg: no
+                vacc_tvg: no
+            data_path: /media/data0
+
+XEngine:
+    n_chans: 256
+    bw_frac: 8
+    n_ants: 8
+    acc_len: 1024
+
+    nodes:
+        - host: adrian
+          band: 0
+
+        - host: brian
+          band: 1
+
+        - host: charlie
+          band: 2
+
+        - host: daniel
+          band: 3
+
+        - host: edward
+          band: 4
+
+        - host: fred
+          band: 5
+
+        - host: graham
+          band: 6
+
+        - host: harry
+          band: 7
+
+Array:
+    # array location in degrees
+    lat: 52.2050
+    lon: 0.1190
+
+Antennas:
+    - ant: 0
+      loc: [22.0076, 17.5829, 0.0106]
+      index: 1
+    - ant: 1
+      loc: [12.0739, 7.7928, -0.0006]
+      index: 1
+    - ant: 2
+      loc: [17.0683, 7.8579, -0.0161]
+      index: 2
+    - ant: 3
+      loc: [7.2304, 17.6676, 0.0585]
+      index: 3
+    - ant: 4
+      loc: [14.4561, 27.8043, 0.0688]
+      index: 4
+    - ant: 5
+      loc: [22.0568, 11.2184, -0.0230]
+      index: 5
+    - ant: 6
+      loc: [5.7293, 12.2961, 0.0366]
+      index: 6
+    - ant: 7
+      loc: [19.6578, 23.3406, 0.0340]
+      index: 7
+
+FEngine:
+    n_chans: 2048
+    adc_power_acc_len: 2500000000
+    #fft_power_acc_len counts in spectra. 1048537 is about 0.85s
+    #(but at the moment it can only be a number <= 20 bits)
+    fft_power_acc_len: 1048575
+    adc_clk: 5000
+    mix_freq: 9000
+    eq_dec: 2
+    eq_format: 'H'
+    eq_bp: 6
+    phase_switch: yes
+    
+    nodes:
+        - ant: 0
+          band: low
+          adc: 0
+          host: adrian
+
+        - ant: 0
+          band: high
+          adc: 1
+          host: adrian
+
+        - ant: 1
+          band: low
+          adc: 0
+          host: brian
+
+        - ant: 1
+          band: high
+          adc: 1
+          host: brian
+
+        - ant: 2
+          band: low
+          adc: 0
+          host: charlie
+
+        - ant: 2
+          band: high
+          adc: 1
+          host: charlie
+
+        - ant: 3
+          band: low
+          adc: 0
+          host: daniel
+
+        - ant: 3
+          band: high
+          adc: 1
+          host: daniel
+
+        - ant: 4
+          band: low
+          adc: 0
+          host: edward
+
+        - ant: 4
+          band: high
+          adc: 1
+          host: edward
+
+        - ant: 5
+          band: low
+          adc: 0
+          host: fred
+
+        - ant: 5
+          band: high
+          adc: 1
+          host: fred
+
+        - ant: 6
+          band: low
+          adc: 0
+          host: graham
+
+        - ant: 6
+          band: high
+          adc: 1
+          host: graham
+
+        - ant: 7
+          band: low
+          adc: 0
+          host: harry
+
+        - ant: 7
+          band: high
+          adc: 1
+          host: harry
