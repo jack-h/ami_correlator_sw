@@ -252,6 +252,7 @@ def get_meta_struct(maxant=10, maxsrc=16, maxagc=40):
        Unpackable('tcryo',     '!%di'%maxant),
        Unpackable('pcryo',     '!%di'%maxant),
        Unpackable('agc',       '!%di'%maxant),
+       Unpackable('delay',     '!%di'%maxant),
        tel_def_str,
        obs_def_str,
        src_def_str,
