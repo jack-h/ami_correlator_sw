@@ -641,6 +641,7 @@ class AmiDC(object):
 
         self._logger.info("Programming all ROACHs!")
         self.do_for_all('safe_prog', self.fpgas.values())
+        self.do_for_all('program_all_sfp_phys', self.fpgas.values())
         self.do_for_all('calibrate_all_qdr', self.fpgas.values())
 
         if reinitialise:
