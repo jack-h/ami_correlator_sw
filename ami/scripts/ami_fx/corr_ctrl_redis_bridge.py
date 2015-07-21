@@ -75,7 +75,7 @@ if __name__ == '__main__':
     BLS_TO_SEND = []
     for i in range(corr.n_ants):
         for j in range(corr.n_ants - i):
-            BLS_TO_SEND += [i,j]
+            BLS_TO_SEND.append([i,j])
 
     corrdat = np.fromstring(redis.Redis.get(corr.redis_host, 'RECEIVER:xeng_raw0'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
     corrdat_txbuf = np.zeros_like(corrdat[:, range(len(BLS_TO_SEND)), :, :])
