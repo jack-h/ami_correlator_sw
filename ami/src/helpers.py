@@ -73,7 +73,7 @@ def slice(val,lsb,width=1):
 def add_default_log_handlers(logger, redishostname='ami_redis_host', fglevel=logging.INFO, bglevel=logging.INFO):
     logger.setLevel(logging.DEBUG)
 
-    formatter = logging.Formatter('%(asctime)s - %(name)15s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s - %(name)20s - %(levelname)s - %(message)s')
 
     stream_handler = logging.StreamHandler(stream=sys.stdout)
     stream_handler.setLevel(fglevel)
