@@ -31,7 +31,7 @@ def write_data(writer, d, timestamp, meta, **kwargs):
                data_type = type(val)
            writer.append_data(key, [length], val, data_type)
     writer.append_data('xeng_raw0', d.shape, d, np.int32)
-    writer.append_data('timestamp0', [1], timestamp, np.int64)
+    writer.append_data('timestamp0', [1], timestamp, np.float64)
     for key, value in kwargs.iteritems():
         writer.append_data(key, value.shape, value, value.dtype)
 
