@@ -1,14 +1,14 @@
 Configuration:
     katcp_port: 7147
-    boffile: ami_fx_nofs_cf7f_2015_Feb_23_1738.bof
+    boffile: amila_2015_Jul_17_0831.bof
     redis_host: localhost
     redis_port: 6379
     control_interface:
         host: 10.1.0.10
         data_port: 2007
         meta_port: 2006
-        n_ants: 10
-        n_agcs: 40
+        n_ants: 8
+        n_agcs: 32
     correlator:
         hardcoded:
             n_ants: 8
@@ -25,7 +25,7 @@ Configuration:
                 #port: 10000
             one_gbe:
                 dest_ip: 10.1.1.1
-                dest_mac: 0x90E2BA75D060
+                dest_mac: 0x90E2BA75D610
                 port: 10000
             testing:
                 ct_tvg: no
@@ -37,7 +37,7 @@ XEngine:
     n_chans: 256
     bw_frac: 8
     n_ants: 8
-    acc_len: 1024
+    acc_len: 400
 
     nodes:
         - host: adrian
@@ -110,81 +110,97 @@ FEngine:
     
     nodes:
         - ant: 0
+          phase_walsh : 1
           band: low
           adc: 0
           host: adrian
 
         - ant: 0
+          phase_walsh : 1
           band: high
           adc: 1
           host: adrian
 
         - ant: 1
+          phase_walsh : 2
           band: low
           adc: 0
           host: brian
 
         - ant: 1
+          phase_walsh : 2
           band: high
           adc: 1
           host: brian
 
         - ant: 2
+          phase_walsh : 3
           band: low
           adc: 0
           host: charlie
 
         - ant: 2
+          phase_walsh : 3
           band: high
           adc: 1
           host: charlie
 
         - ant: 3
+          phase_walsh : 4
           band: low
           adc: 0
           host: daniel
 
         - ant: 3
+          phase_walsh : 4
           band: high
           adc: 1
           host: daniel
 
         - ant: 4
+          phase_walsh : 5
           band: low
           adc: 0
           host: edward
 
         - ant: 4
+          phase_walsh : 5
           band: high
           adc: 1
           host: edward
 
         - ant: 5
+          phase_walsh : 6
           band: low
           adc: 0
           host: fred
 
         - ant: 5
+          phase_walsh : 6
           band: high
           adc: 1
           host: fred
 
         - ant: 6
+          phase_walsh : 7
           band: low
           adc: 0
           host: graham
 
         - ant: 6
+          phase_walsh : 7
           band: high
           adc: 1
           host: graham
 
         - ant: 7
+          phase_walsh : 8
           band: low
           adc: 0
           host: harry
 
         - ant: 7
+          phase_walsh : 8
           band: high
           adc: 1
           host: harry
