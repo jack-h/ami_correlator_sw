@@ -74,8 +74,10 @@ if __name__ == '__main__':
     # Send all baselines. TODO: make this a command line parameter
     BLS_TO_SEND = []
     for i in range(corr.n_ants):
-        for j in range(corr.n_ants - i):
+        for j in range(i+1, corr.n_ants):
             BLS_TO_SEND.append([i,j])
+    print 'Will send %d baselines'%len(BLS_TO_SEND)
+    print BLS_TO_SEND
 
     corrdat = np.fromstring(redis.Redis.get(corr.redis_host, 'RECEIVER:xeng_raw0'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
     corrdat_txbuf = np.zeros_like(corrdat[:, range(len(BLS_TO_SEND)), :, :])
