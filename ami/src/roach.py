@@ -5,21 +5,22 @@ import numpy as np
 import re
 import qdr
 
-logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
-
 class Roach(katcp.FpgaClient):
     '''
     A minor expansion on the FpgaClient class adds a few methods.
     '''
-    def __init__(self, roachhost, port=7147, boffile=None, logger=logger):
-        katcp.FpgaClient.__init__(self,roachhost, port, logger=logger)
+    def __init__(self, roachhost, port=7147, boffile=None, logger=None):
+        self._logger = logger or logging.getLogger(__name__ + ' (%s)'%roachhost)
+        if len(self._logger.handlers) == 0:
+            helpers.add_default_log_handlers(self._logger)
+                
+        katcp.FpgaClient.__init__(self,roachhost, port, logger=self._logger)
         self.boffile = boffile
         # self._logger should be set by the FpgaClient class,
         # but looking at the katcp code I'm not convinced
         # that it is properly passed up the chain of classes
         # TODO: is there a typo in the katcp CallbackClient class __init__?
         # Should the superclass be constructed with logger=log, not logger=logger?
-        self._logger = logger
 
     def snap(self,name,format='L',**kwargs):
         """
@@ -46,6 +47,28 @@ class Roach(katcp.FpgaClient):
             if re.search('qdr[0-9]_memory', dev) is not None:
                 self._logger.info('Found QDR: %s'%dev)
                 self.calibrate_qdr(dev.rstrip('_memory'), verbosity=verbosity)
+    
+    def program_all_sfp_phys(self):
+        """
+        Try to program all SFP phys. Give up on any failure (probably not the desired behaviour,
+        as failure could be due to no SFP present (ok), or no phy binary (not ok).
+        Even goes so far as to disable the FpgaClient logger so as to hide false errors.
+        TODO: make smarter.
+        """
+        timeout = 30
+        orig_log_level = self._logger.getEffectiveLevel()
+        for mezz in range(2):
+            for phy in range(2):
+                # only allow critical messages, unless the phyprog call passes
+                # in which case temporarily allow messages to pass an INFO
+                self._logger.setLevel(logging.CRITICAL)
+                try:
+                    self._request('phyprog', timeout, '%d'%mezz, '%d'%phy)
+                except RuntimeError:
+                    continue
+                self._logger.setLevel(orig_log_level)
+                self._logger.info('Programmed SFP mezzanine %d, phy %d'%(mezz, phy))
+        self._logger.setLevel(orig_log_level)
 
     def calibrate_qdr(self, qdrname, verbosity=2):
         self._logger.info('Attempting to calibrate %s'%qdrname)
