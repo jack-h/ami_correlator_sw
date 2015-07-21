@@ -71,15 +71,12 @@ if __name__ == '__main__':
     # get the correlator data from redis
     #BLS_TO_SEND = [[4,5]]
     #BLS_TO_SEND = [[4,5], [4,6], [5,6]]
-    BLS_TO_SEND = [[0,1], [0,2], [0,3], [0,4], [0,5], [0,6], [0,7], [0,8], [0,9],
-                   [1,2], [1,3], [1,4], [1,5], [1,6], [1,7], [1,8], [1,9],
-                   [2,3], [2,4], [2,5], [2,6], [2,7], [2,8], [2,9],
-                   [3,4], [3,5], [3,6], [3,7], [3,8], [3,9],
-                   [4,5], [4,6], [4,7], [4,8], [4,9],
-                   [5,6], [5,7], [5,8], [5,9],
-                   [6,7], [6,8], [6,9],
-                   [7,8], [7,9],
-                   [8,9]]
+    # Send all baselines. TODO: make this a command line parameter
+    BLS_TO_SEND = []
+    for i in range(corr.n_ants):
+        for j in range(corr.n_ants - i):
+            BLS_TO_SEND += [i,j]
+
     corrdat = np.fromstring(redis.Redis.get(corr.redis_host, 'RECEIVER:xeng_raw0'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
     corrdat_txbuf = np.zeros_like(corrdat[:, range(len(BLS_TO_SEND)), :, :])
     reduce_bl_order = gen_casper2reduce_bls(corr.n_ants, corr.bl_order, reduce_order=BLS_TO_SEND)
