@@ -38,6 +38,7 @@ if __name__ == '__main__':
 
     stats = {}
     roachhosts = [xeng.roachhost for xeng in corr.xengs]
+    packets_per_spectra = corr.xengs[0].n_chans
     print roachhosts
     while (True):
         #for port in range(4):
@@ -64,7 +65,7 @@ if __name__ == '__main__':
                 stats['last bad lb addr'] = (xeng.roachhost.read_uint('network_stats%s_last_lb_bad_addr'%port) // (64*16)) 
                 stats['last bad tge addr'] = (xeng.roachhost.read_uint('network_stats%s_last_tge_bad_addr'%port) //64) & 0xf
                 stats['output eofs'] = (xeng.roachhost.read_uint('xeng0_gbe_eof_cnt'))
-                stats['incomplete spectra'] = stats['output eofs'] % 408
+                stats['incomplete spectra'] = stats['output eofs'] % packets_per_spectra
                 print '(%10s) X%dP%d'%(xeng.host, xeng.band, port),
                 for name, val in stats.iteritems():
                     print '%s: %3d'%(name,val),
