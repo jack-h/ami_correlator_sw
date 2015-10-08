@@ -30,6 +30,8 @@ Configuration:
             window_len: 1024
             output_format: l
             n_pols: 1
+            # sync period is in FPGA clocks
+            sync_period: 738197504
         runtime:
             fft_shift: 0b111011011011011
             ten_gbe:
