@@ -52,7 +52,7 @@ XEngine:
         - host: daniel
           band: 3
 
-        - host: edward
+        - host: bob
           band: 4
 
         - host: fred
@@ -161,13 +161,13 @@ FEngine:
           phase_walsh : 5
           band: low
           adc: 0
-          host: edward
+          host: bob
 
         - ant: 4
           phase_walsh : 5
           band: high
           adc: 1
-          host: edward
+          host: bob
 
         - ant: 5
           phase_walsh : 6
