@@ -7,7 +7,12 @@ Configuration:
     #boffile: ami_fx_nofs_cf7e_2015_Jan_27_0028.bof
     #boffile: ami_fx_nofs_cf7e_2015_Jan_28_1741.bof
     #boffile: ami_fx_nofs_cf7e_2015_Feb_04_1137.bof
-    boffile: ami_fx_nofs_cf7f_2015_Feb_23_1738.bof
+    #boffile: ami_fx_nofs_cf7e_2015_Feb_04_1857.bof
+    #boffile: ami_fx_nofs_cf7f_2015_Feb_24_1041.bof
+    #boffile: ami_fx_nofs_cf7g_2015_Feb_25_1755.bof #bad adc1 spi interface
+    #boffile: ami_fx_nofs_cf7h_2015_Feb_26_2353.bof
+    #boffile: amisa_2015_Mar_15_1605.bof
+    boffile: amisa_2015_Mar_17_1646.bof
     redis_host: localhost
     redis_port: 6379
     control_interface:
@@ -44,7 +49,7 @@ XEngine:
     n_chans: 204
     bw_frac: 10
     n_ants: 10
-    acc_len: 1024
+    acc_len: 1192 
 
     nodes:
         - host: amanda
@@ -79,13 +84,13 @@ XEngine:
 
 Array:
     # array location in degrees
-    lat: 52.2050
-    lon: 0.1190
+    lat: 52.164333
+    lon: 0.039361
 
 Antennas:
     - ant: 0
       loc: [22.0076, 17.5829, 0.0106]
-      index: 1
+      index: 0
     - ant: 1
       loc: [12.0739, 7.7928, -0.0006]
       index: 1
@@ -121,7 +126,7 @@ FEngine:
     #(but at the moment it can only be a number <= 20 bits)
     fft_power_acc_len: 1048575
     adc_clk: 5000
-    mix_freq: 9000
+    mix_freq: 8500
     eq_dec: 2
     eq_format: 'H'
     eq_bp: 6
@@ -129,101 +134,121 @@ FEngine:
     
     nodes:
         - ant: 0
+          phase_walsh : 1
           band: low
           adc: 0
           host: amanda
 
         - ant: 0
+          phase_walsh : 1
           band: high
           adc: 1
           host: amanda
 
         - ant: 1
+          phase_walsh : 2
           band: low
           adc: 0
           host: beatrice
 
         - ant: 1
+          phase_walsh : 2
           band: high
           adc: 1
           host: beatrice
 
         - ant: 2
+          phase_walsh : 3
           band: low
           adc: 0
           host: charlotte
 
         - ant: 2
+          phase_walsh : 3
           band: high
           adc: 1
           host: charlotte
 
         - ant: 3
+          phase_walsh : 4
           band: low
           adc: 0
           host: daisy
 
         - ant: 3
+          phase_walsh : 4
           band: high
           adc: 1
           host: daisy
 
         - ant: 4
+          phase_walsh : 5
           band: low
           adc: 0
           host: elizabeth
 
         - ant: 4
+          phase_walsh : 5
           band: high
           adc: 1
           host: elizabeth
 
         - ant: 5
+          phase_walsh : 6
           band: low
           adc: 0
           host: felicity
 
         - ant: 5
+          phase_walsh : 6
           band: high
           adc: 1
           host: felicity
 
         - ant: 6
+          phase_walsh : 7
           band: low
           adc: 0
           host: grace
 
         - ant: 6
+          phase_walsh : 7
           band: high
           adc: 1
           host: grace
 
         - ant: 7
+          phase_walsh : 8
           band: low
           adc: 0
           host: heidi
 
         - ant: 7
+          phase_walsh : 8
           band: high
           adc: 1
           host: heidi
 
         - ant: 8
+          phase_walsh : 9
           band: low
           adc: 0
           host: isabel
 
         - ant: 8
+          phase_walsh : 9
           band: high
           adc: 1
           host: isabel
 
         - ant: 9
+          phase_walsh : 10
           band: low
           adc: 0
           host: juliet
 
         - ant: 9
+          phase_walsh : 10
           band: high
           adc: 1
           host: juliet

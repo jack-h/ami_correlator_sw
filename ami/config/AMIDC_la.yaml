@@ -66,33 +66,33 @@ XEngine:
 
 Array:
     # array location in degrees
-    lat: 52.2050
-    lon: 0.1190
+    lat: 52.1694
+    lon: 0.0600
 
 Antennas:
     - ant: 0
-      loc: [22.0076, 17.5829, 0.0106]
-      index: 1
+      loc: [-107.0366, 6.2124, -0.1155]
+      index: 0
     - ant: 1
-      loc: [12.0739, 7.7928, -0.0006]
+      loc: [-80.2842, 4.6468, -0.0815]
       index: 1
     - ant: 2
-      loc: [17.0683, 7.8579, -0.0161]
+      loc: [-62.4503, 3.6095, -0.0574]
       index: 2
     - ant: 3
-      loc: [7.2304, 17.6676, 0.0585]
+      loc: [-35.6924, 2.0513, -0.0343]
       index: 3
     - ant: 4
-      loc: [14.4561, 27.8043, 0.0688]
+      loc: [-0.0135, -0.0230, 0.0113]
       index: 4
     - ant: 5
-      loc: [22.0568, 11.2184, -0.0230]
+      loc: [-17.3429, -42.1490, -1.6452]
       index: 5
     - ant: 6
-      loc: [5.7293, 12.2961, 0.0366]
+      loc: [-56.0990, -57.0040, -2.0731]
       index: 6
     - ant: 7
-      loc: [19.6578, 23.3406, 0.0340]
+      loc: [-98.1023, -18.9624, -1.0832]
       index: 7
 
 FEngine:
@@ -102,7 +102,7 @@ FEngine:
     #(but at the moment it can only be a number <= 20 bits)
     fft_power_acc_len: 1048575
     adc_clk: 5000
-    mix_freq: 9000
+    mix_freq: 8500
     eq_dec: 2
     eq_format: 'H'
     eq_bp: 6
