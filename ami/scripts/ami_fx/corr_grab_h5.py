@@ -56,7 +56,24 @@ def get_meta(redis_host, keys):
     for kn, key in enumerate(keys):
         ret_dict[key] = json.loads(jsonvals[kn])
     return ret_dict
-    
+
+def new_delays(corr, time):
+    return time > corr.get_coarse_delay_load_time()
+
+def unwrap_delays(corr, d, delays):
+    bw = corr.adc_clock / 2.
+    cbw = bw/corr.f_n_chans
+    freqs = np.linspace(0, bw - cbw, f_n_chans)
+    dual_band_freqs = np.concatenate(freqs, -freqs)
+    phases = np.zeros([corr.n_ants, freqs.shape[0]], dtype=complex)
+    for ant in range(corr.n_ants):
+        phases[ant] = np.exp(1j * 2 * np.pi * dual_band_freqs * delays[ant] * 1e-12)
+    #complexify the data
+    dc = d[:, :, :, 1] + 1j*d[:, :, :, 0]
+    for bln, bl in corr.bl_order:
+        dc[:, bl_n, :] *= (phases[bl_order[0]] * (-phases[bl_order[1]]))
+    d[:,:,:,1] = dc.real
+    d[:,:,:,0] = dc.imag
 
 def signal_handler(signum, frame):
     """
@@ -144,6 +161,7 @@ if __name__ == '__main__':
     last_buf_id = 0
     last_int = 0
     current_obs = None
+    delays = None
     receiver_enable = False
     last_recv_rst = time.time()
     while True:
@@ -153,7 +171,9 @@ if __name__ == '__main__':
         #print mcnt, mcnt //4096, mcnt % 4096, xeng, offset
         buf_id = (mcnt // (corr.fengs[0].n_chans * corr.n_bands) // acc_len) % N_WINDOWS
 	last_timestamp = tsbuf[buf_id]
-	tsbuf[buf_id] = m2t['offset'] + m2t['conv_factor']*(mcnt // 4096)*4096
+
+        # Convert timestamp to time and subtract off half an integration so it marks the center
+	tsbuf[buf_id] = (m2t['offset'] + m2t['conv_factor']*(mcnt // 4096)*4096) - (0.5*corr.acc_tim)
         #if xeng==0 and offset==0:
         #    print mcnt, buf_id, last_timestamp
         if xeng*2 != (mcnt % 4096):
@@ -203,6 +223,16 @@ if __name__ == '__main__':
                     datavec = np.reshape(datbuf[win_to_ship], [corr.n_bands * 2048, corr.n_bls, 1, 2]) #chans * bls * pols * r/i
                     # Write integration
                     phased_to = np.array([corr.array.get_sidereal_time(tsbuf[win_to_ship]), corr.array.lat_r])
+                    # If the accumulation timestamp is later than the coarse delays
+                    # stored in redis, get the new delays set and use that for phase
+                    # rotation. Otherwise, keep using the last delay set.
+                    # This assumes that delays are updated in redis slowly compared to
+                    # integration time, which should be a safe assumption.
+                    if (delays is None) or new_delays(corr, tsbuf[win_to_ship]):
+                        delays = corr.get_coarse_delays()
+                    # rotate the phases of the data array in place
+                    unwrap_delays(corr, datavec, delays)
+
                     write_data(writer,datavec,tsbuf[win_to_ship], meta_buf[win_to_ship], noise_demod=corr.noise_switched_from_redis(), phased_to=phased_to)
                     # Write to redis
                     redis.Redis.set(corr.redis_host, 'RECEIVER:xeng_raw0', datavec[:].tostring())
