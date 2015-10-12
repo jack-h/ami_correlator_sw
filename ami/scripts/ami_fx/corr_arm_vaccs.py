@@ -11,7 +11,7 @@ if __name__ == '__main__':
     p.set_usage('%prog [options] [CONFIG_FILE]')
     p.set_description(__doc__)
     p.add_option('-t', '--time', dest='time', type='float', default=5.0,
-        help='Number of seconds in the future to arm vaccs')
+        help='Number of seconds in the future to arm vaccs. Default=5.0')
 
     opts, args = p.parse_args(sys.argv[1:])
     if args == []:
