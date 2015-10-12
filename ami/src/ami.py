@@ -252,7 +252,8 @@ class AmiDC(object):
             return np.array(self.redis_host.get('CONTROL:delay'))
 
     def update_coarse_delays(self, delays=None):
-        delays = delays or [0]*self.n_ants
+        if delays is None:
+            delays = [0]*self.n_ants
         if len(delays) != self.n_ants:
             logger.error('Trying to load %d antennas with %d delays!'%(len(delays), self.n_ants))
         for feng in self.fengs:
@@ -266,7 +267,8 @@ class AmiDC(object):
         return self.redis_host.get('coarse_delays')
 
     def timed_coarse_delay_update(self, delays=None):
-        delays = delays or [0]*self.n_ants
+        if delays is None:
+            delays = [0]*self.n_ants
         load_by = self.get_next_sync_acc_alignment()
         load_after = load_by - self.sync_period
         while(time.time() < (load_after + 0.3*self.sync_period)):
