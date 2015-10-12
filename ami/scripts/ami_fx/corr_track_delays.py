@@ -42,6 +42,6 @@ if __name__ == '__main__':
            while(time.time() < (last_update_time + opts.rate)):
                time.sleep(1)
            logger.info('Attempting to load new coefficients at time %s'%time.ctime(time.time()))
-           last_update_time = corr.timed_coarse_delay_update(delays=corr.get_source_delays(adc_clocks=True)) 
+           last_update_time = corr.timed_coarse_delay_update(delays=corr.get_source_delays(adc_clks=True)) 
     
     
