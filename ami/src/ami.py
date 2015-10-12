@@ -130,6 +130,7 @@ class AmiDC(object):
         offset = time - mcnt_zero
         conv_factor = self.fengs[0].n_chans * 2 * self.c_correlator_hard['window_len']/(self.adc_clk)
         return int(offset / conv_factor)
+    
 
     def round_time_to_sync_clocks(self, time):
         """
@@ -257,6 +258,12 @@ class AmiDC(object):
         for feng in self.fengs:
             feng.set_coarse_delay(delays[feng.ant])
         self.redis_host.set('coarse_delays', list(delays))
+
+    def get_coarse_delay_load_time(self):
+        return self.redis_host.get('coarse_delays_valid_at')
+
+    def get_coarse_delays(self):
+        return self.redis_host.get('coarse_delays')
 
     def timed_coarse_delay_update(self, delays=None):
         delays = delays or [0]*self.n_ants
