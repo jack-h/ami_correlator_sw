@@ -57,23 +57,30 @@ def get_meta(redis_host, keys):
         ret_dict[key] = json.loads(jsonvals[kn])
     return ret_dict
 
-def new_delays(corr, time):
-    return time > corr.get_coarse_delay_load_time()
+def redis_delays_valid(corr, time):
+    # time is a timestamp of the centre of an integration. the
+    # time in redis is the timestamp of a start of integration
+    # 2.01 rather than 2 is a clurge to sidestep precision issues
+    if not (time - (corr.acc_time/2.01)) > corr.get_coarse_delay_load_time():
+        #print time, time-(corr.acc_time/2.01), corr.get_coarse_delay_load_time(), corr.acc_time
+        return False
+    else:
+        return True
 
 def unwrap_delays(corr, d, delays):
-    bw = corr.adc_clock / 2.
+    bw = corr.adc_clk / 2.
     cbw = bw/corr.f_n_chans
-    freqs = np.linspace(0, bw - cbw, f_n_chans)
-    dual_band_freqs = np.concatenate(freqs, -freqs)
-    phases = np.zeros([corr.n_ants, freqs.shape[0]], dtype=complex)
+    freqs = np.linspace(0, bw - cbw, corr.f_n_chans)
+    dual_band_freqs = np.concatenate((freqs, -freqs))
+    #dual_band_freqs = np.zeros_like(dual_band_freqs)
+    phases = np.zeros([corr.n_ants, corr.n_bands*freqs.shape[0]], dtype=np.complex64)
+    dc = np.zeros([dual_band_freqs.shape[0], corr.n_bls], dtype=np.complex64)
     for ant in range(corr.n_ants):
         phases[ant] = np.exp(1j * 2 * np.pi * dual_band_freqs * delays[ant] * 1e-12)
-    #complexify the data
-    dc = d[:, :, :, 1] + 1j*d[:, :, :, 0]
-    for bln, bl in corr.bl_order:
-        dc[:, bl_n, :] *= (phases[bl_order[0]] * (-phases[bl_order[1]]))
-    d[:,:,:,1] = dc.real
-    d[:,:,:,0] = dc.imag
+    for bln, bl in enumerate(corr.bl_order):
+        dc[:, bln] = (d[:, bln, 0, 1] + 1j*d[:, bln, 0, 0]) * (phases[bl[0]] * (-phases[bl[1]]))
+    d[:,:,0,1] = np.array(dc.real, dtype=np.int32)
+    d[:,:,0,0] = np.array(dc.imag, dtype=np.int32)
 
 def signal_handler(signum, frame):
     """
@@ -173,7 +180,7 @@ if __name__ == '__main__':
 	last_timestamp = tsbuf[buf_id]
 
         # Convert timestamp to time and subtract off half an integration so it marks the center
-	tsbuf[buf_id] = (m2t['offset'] + m2t['conv_factor']*(mcnt // 4096)*4096) - (0.5*corr.acc_tim)
+	tsbuf[buf_id] = (m2t['offset'] + m2t['conv_factor']*(mcnt // 4096)*4096) - (0.5*corr.acc_time)
         #if xeng==0 and offset==0:
         #    print mcnt, buf_id, last_timestamp
         if xeng*2 != (mcnt % 4096):
@@ -228,10 +235,14 @@ if __name__ == '__main__':
                     # rotation. Otherwise, keep using the last delay set.
                     # This assumes that delays are updated in redis slowly compared to
                     # integration time, which should be a safe assumption.
-                    if (delays is None) or new_delays(corr, tsbuf[win_to_ship]):
+                    ##print 'foo', np.array(datavec[200:210,5,0,1], dtype=np.int64)**2 + np.array(datavec[200:210,5,0,0], dtype=np.int64)**2
+                    if (delays is None) or redis_delays_valid(corr, tsbuf[win_to_ship]):
                         delays = corr.get_coarse_delays()
+                    else:
+                        logger.info('Redis delays newer than data -- not using them this time')
                     # rotate the phases of the data array in place
                     unwrap_delays(corr, datavec, delays)
+                    ##print 'bar', np.array(datavec[200:210,5,0,1], dtype=np.int64)**2 + np.array(datavec[200:210,5,0,0], dtype=np.int64)**2
 
                     write_data(writer,datavec,tsbuf[win_to_ship], meta_buf[win_to_ship], noise_demod=corr.noise_switched_from_redis(), phased_to=phased_to)
                     # Write to redis
