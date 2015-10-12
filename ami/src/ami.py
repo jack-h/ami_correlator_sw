@@ -13,6 +13,7 @@ import roach
 import engines
 import antenna_functions
 from corr import sim
+from fractions import gcd
 
 logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
 
@@ -109,7 +110,7 @@ class AmiDC(object):
         """
         Get the offset and mult fact required to turn an mcnt into a time
         """
-        conv_factor = self.c_correlator_hard['window_len']/(self.adc_clk*1e6)
+        conv_factor = self.c_correlator_hard['window_len']/(self.adc_clk)
         offset = self.load_sync()
         return {'offset': offset, 'conv_factor': conv_factor}
 
@@ -117,7 +118,7 @@ class AmiDC(object):
         """
         Convert an mcnt to a UTC time based on the instance's sync_time attribute.
         """
-        conv_factor = self.fengs[0].n_chans * 2 * self.c_correlator_hard['window_len']/(self.adc_clk*1e6)
+        conv_factor = self.fengs[0].n_chans * 2 * self.c_correlator_hard['window_len']/(self.adc_clk)
         offset = self.load_sync()
         return offset + mcnt * conv_factor
 
@@ -127,18 +128,45 @@ class AmiDC(object):
             self._logger.error('Requested time %f, which is prior to current sync time %f'%(time, offset))
             raise RuntimeError('Requested time %f, which is prior to current sync time %f'%(time, offset))
         offset = time - mcnt_zero
-        conv_factor = self.fengs[0].n_chans * 2 * self.c_correlator_hard['window_len']/(self.adc_clk*1e6)
+        conv_factor = self.fengs[0].n_chans * 2 * self.c_correlator_hard['window_len']/(self.adc_clk)
         return int(offset / conv_factor)
+
+    def round_time_to_sync_clocks(self, time):
+        """
+        Given a target time, return the number of adc clocks 
+        of the time rounded up so that it coincides with an FPGA sync.
+        """
+        # get the current sync time
+        synctime = self.load_sync()
+        # get the time since sync of our target time
+        elapsed = time - synctime
+        # how many syncs is this?
+        ##print 'elapsed', elapsed
+        ##print 'sync time', self.sync_period
+        n_syncs = elapsed / self.sync_period
+        ##print 'n_syncs', n_syncs
+        # round up and convert to adc clocks
+        target_sync = int(np.ceil(n_syncs))
+        ##print 'taget sync', target_sync
+        ##print 'sync_clocks', self.sync_clocks
+        ##print 'rv', target_sync * self.sync_clocks
+        return target_sync * self.sync_clocks
 
     def arm_vaccs(self, armtime):
         if (armtime - 2) < time.time():
             self._logger.error("You can't arm X-Engine vaccs less than 2 seconds in the future")
             raise RuntimeError("You can't arm X-Engine vaccs less than 2 seconds in the future")
-        arm_mcnt = self.time_to_mcnt(armtime)
-        self._logger.info("Arming Xengines at %s (MCNT: %d, 0x%8x, (bottom 20 bits: %d))"%(time.ctime(armtime), arm_mcnt, arm_mcnt, arm_mcnt&(2**20 - 1)))
+        # the arm time (in adc clocks since sync)rounded to an integer number of sync cycles since fpga sync
+        arm_clocks = self.round_time_to_sync_clocks(armtime)
+        ##print arm_clocks
+        arm_mcnt = arm_clocks // 2 // self.f_n_chans // self.window_len
+        ##print arm_mcnt
+        self._logger.info("Arming Xengines at %s (MCNT: %d, 0x%8x, (bottom 20 bits: %d))"%(time.ctime(self.mcnt2time(arm_mcnt)), arm_mcnt, arm_mcnt, arm_mcnt&(2**20 - 1)))
         for xeng in self.xengs:
-            xeng.set_vacc_arm(arm_mcnt)
+            xeng.set_vacc_arm(arm_mcnt & (2**32-1)) # we only trigger on the bottom 32 bits
             xeng.reset_vacc()
+        # and update the value in redis	
+        self.redis_host.set('vacc_arm_mcnt', arm_mcnt) 
         if time.time() + 1 > armtime:
             self._logger.warning("Finished arming XEngines with less than 1s to spare")
 
@@ -184,6 +212,69 @@ class AmiDC(object):
             self._logger.info('sync time is %d (%s)'%(self.sync_time, time.ctime(self.sync_time)))
         return self.sync_time
 
+    def get_next_sync_acc_alignment(self):
+        """
+        Return the time of the next sync pulse
+        which is aligned with a new accumulation.
+        This allows loading of coarse delays at opportune
+        moments. Note that if the firmware was cleverer,
+        we could load the delays at any software-specified
+        time.
+        """
+        # Get the latest mcnt to which vaccs are currently locked and the sync time
+        vacc_mcnt = self.redis_host.get('vacc_arm_mcnt') 
+        vacc_time = self.mcnt2time(vacc_mcnt)
+        # how long after this time are we?
+        # +2 means load will occur at least 2 seconds in the future
+        elapsed = (time.time()+2) - vacc_time
+        # get lcm of sync period and accumulation length
+        lcm = self.sync_clocks * self.acc_samples / gcd(self.sync_clocks, self.acc_samples)
+        # how many lcms have passed?
+        elapsed_lcms = float(elapsed * self.adc_clk) / lcm
+        # round up, and calculate time of next sync / acc-start
+        next_match = vacc_time + (np.ceil(elapsed_lcms) * lcm / (self.adc_clk))
+        # This is the time we need to have loaded the next coarse delays by.
+        return next_match
+
+    def get_source_delays(self, adc_clks=True):
+        """
+        Return the latest per-antenna delays from redis.
+        if adc_clocks = True, return delays in integral adc clocks.
+        else, return delays in ps.
+        """
+        age = self.redis_host.get_age('CONTROL:delay')
+        if age > 10:
+            logger.warning('Obtained delays from redis but they are %d seconds old'%age)
+        if adc_clks:
+            return np.array(1e-12 * self.adc_clk * np.array(self.redis_host.get('CONTROL:delay')), dtype=int)
+        else:
+            return np.array(self.redis_host.get('CONTROL:delay'))
+
+    def update_coarse_delays(self, delays=None):
+        delays = delays or [0]*self.n_ants
+        if len(delays) != self.n_ants:
+            logger.error('Trying to load %d antennas with %d delays!'%(len(delays), self.n_ants))
+        for feng in self.fengs:
+            feng.set_coarse_delay(delays[feng.ant])
+        self.redis_host.set('coarse_delays', list(delays))
+
+    def timed_coarse_delay_update(self, delays=None):
+        delays = delays or [0]*self.n_ants
+        load_by = self.get_next_sync_acc_alignment()
+        load_after = load_by - self.sync_period
+        while(time.time() < (load_after + 0.3*self.sync_period)):
+            time.sleep(0.01)
+        startloadtime = time.time()
+        logger.info('Delays loading at %s (%.2fs after last sync)'%(time.ctime(startloadtime), startloadtime-load_after))
+        self.update_coarse_delays(delays)
+        self.redis_host.set('coarse_delays_valid_at', load_by)
+        # Warn if loading wasn't done in time
+        if time.time() > load_by:
+            logger.warning('Coarse delays not loaded in time!')
+        # Return load time
+        loadtime = time.time()
+        logger.info('Delays loaded by %s (%.2fs before next sync)'%(time.ctime(loadtime), load_by-loadtime))
+        return load_by
 
     def parse_config_file(self):
         """
@@ -199,8 +290,10 @@ class AmiDC(object):
         self.n_pols  = self.config['Configuration']['correlator']['hardcoded']['n_pols']
         self.output_format  = self.config['Configuration']['correlator']['hardcoded']['output_format']
         self.data_path  = self.config['Configuration']['correlator']['runtime']['data_path']
-        self.adc_clk  = self.config['FEngine']['adc_clk']
+        self.adc_clk  = float(self.config['FEngine']['adc_clk'] * 1e6)
         self.lo_freq  = self.config['FEngine']['mix_freq']
+        self.f_n_chans  = self.config['FEngine']['n_chans']
+        self.x_acc_len = self.config['XEngine']['acc_len']
         self.n_bls = (self.n_ants * (self.n_ants + 1))/2
         self.bl_order = sim.get_bl_order(self.n_ants)
      
@@ -214,6 +307,13 @@ class AmiDC(object):
         self.c_global = self.config['Configuration']
         self.c_antennas = self.config['Antennas']
         self.c_array = self.config['Array']
+
+        # other useful vars
+        self.window_len = self.c_correlator_hard['window_len']
+        self.sync_clocks= self.c_correlator_hard['sync_period']*16 #measured in ADC clocks
+        self.sync_period = self.sync_clocks / self.adc_clk
+        self.acc_samples = self.x_acc_len * self.c_correlator_hard['window_len'] * self.f_n_chans * 2
+        self.acc_time = self.acc_samples / self.adc_clk
 
         # some debugging / info
         self._logger.info("ROACHes are %r"%self.roaches)
@@ -738,10 +838,10 @@ class AmiSbl(AmiDC):
         return {'corr00':snap00,'corr11':snap11,'corr01':snap01,'timestamp':self.mcnt2time(mcnt)}
 
 
-    def mcnt2time(self,mcnt):
+    def mcnt2time(self, mcnt):
         """
         Convert an mcnt to a UTC time based on the instance's sync_time attribute.
         """
-        conv_factor = 16./(self.adc_clk*1e6)
+        conv_factor = 16./(self.adc_clk)
         offset = self.sync_time
         return offset + mcnt*conv_factor
