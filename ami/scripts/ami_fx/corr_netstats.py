@@ -62,7 +62,7 @@ if __name__ == '__main__':
                 stats['tge packet errs'] = xeng.roachhost.read_uint('network_stats%s_tge_pkt_err_ctr'%port)
                 stats['tge order errs'] = xeng.roachhost.read_uint('network_stats%s_tge_order_err_ctr'%port)
                 stats['both errors'] = xeng.roachhost.read_uint('network_stats%s_both_err_ctr'%port)
-                stats['last bad lb addr'] = (xeng.roachhost.read_uint('network_stats%s_last_lb_bad_addr'%port) // (64*16)) 
+                stats['last bad lb addr'] = (xeng.roachhost.read_uint('network_stats%s_last_lb_bad_addr'%port) // (64)) 
                 stats['last bad tge addr'] = (xeng.roachhost.read_uint('network_stats%s_last_tge_bad_addr'%port) //64) & 0xf
                 stats['output eofs'] = (xeng.roachhost.read_uint('xeng0_gbe_eof_cnt'))
                 stats['incomplete spectra'] = stats['output eofs'] % packets_per_spectra
