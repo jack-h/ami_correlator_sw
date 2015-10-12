@@ -39,7 +39,7 @@ XEngine:
     n_chans: 256
     bw_frac: 8
     n_ants: 8
-    acc_len: 1192
+    acc_len: 1024
 
     nodes:
         - host: adrian
