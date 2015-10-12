@@ -36,7 +36,7 @@ if __name__ == '__main__':
         expire_time = opts.expire
 
     # initialise connection to correlator
-    corr = AMI.AmiSbl(config_file=config_file, passive=True, skip_prog=True)
+    corr = AMI.AmiDC(config_file=config_file, passive=True, skip_prog=True)
     time.sleep(0.1)
 
     # turn on the noise switch
