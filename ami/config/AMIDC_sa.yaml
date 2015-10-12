@@ -30,6 +30,8 @@ Configuration:
             window_len: 1024
             output_format: l
             n_pols: 1
+            # sync period is in FPGA clocks
+            sync_period: 738197504
         runtime:
             fft_shift: 0b111011011011011
             ten_gbe:
@@ -49,7 +51,7 @@ XEngine:
     n_chans: 204
     bw_frac: 10
     n_ants: 10
-    acc_len: 1192 
+    acc_len: 1024
 
     nodes:
         - host: amanda
