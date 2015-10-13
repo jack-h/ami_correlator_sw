@@ -190,8 +190,9 @@ class AmiDC(object):
         t = self.fengs[0].roachhost.read_int('pps_count')
         while self.fengs[0].roachhost.read_int('pps_count') == t:
             time.sleep(0.001)
-
-        self.sync_time=int(time.time())+4
+        #+4 because the firmware is configured to sync after 4 PPS pulses
+        #+1 because there is a bug in the sync block!!! so sync comes one pps late(!)
+        self.sync_time=int(time.time())+4+1
         self._logger.info("Arming F-engine syncs at time %.3f"%self.sync_time)
         self.all_fengs('arm_trigger')
         if send_sync:
@@ -199,7 +200,7 @@ class AmiDC(object):
             self.all_fengs('man_sync')
             self.all_fengs('man_sync')
         self.redis_host.set('sync_time', self.sync_time)
-        time.sleep(4)
+        time.sleep(4+1+1) #wait one second more than necessary for a sync
         return self.sync_time
 
     def load_sync(self):
