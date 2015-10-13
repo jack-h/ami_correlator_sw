@@ -28,7 +28,7 @@ if __name__ == '__main__':
     # the roaches
     # If passive is True, the connections will be made without modifying
     # control software. Otherwise, the connections will be made, the roaches will be programmed and control software will be reset to 0.
-    corr = AMI.AmiSbl(config_file=config_file, passive=True, skip_prog=True)
+    corr = AMI.AmiDC(config_file=config_file, passive=True, skip_prog=True)
     time.sleep(0.1)
 
     if opts.noise_switch:
