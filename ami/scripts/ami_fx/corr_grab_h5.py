@@ -62,7 +62,7 @@ def redis_delays_valid(corr, time):
     # time in redis is the timestamp of a start of integration
     # 2.01 rather than 2 is a clurge to sidestep precision issues
     if not (time - (corr.acc_time/2.01)) > corr.get_coarse_delay_load_time():
-        #print time, time-(corr.acc_time/2.01), corr.get_coarse_delay_load_time(), corr.acc_time
+        print time, time-(corr.acc_time/2.01), corr.get_coarse_delay_load_time(), corr.acc_time
         return False
     else:
         return True
@@ -72,13 +72,11 @@ def unwrap_delays(corr, d, delays):
     cbw = bw/corr.f_n_chans
     freqs = np.linspace(0, bw - cbw, corr.f_n_chans)
     dual_band_freqs = np.concatenate((freqs, -freqs))
-    #dual_band_freqs = np.zeros_like(dual_band_freqs)
     phases = np.zeros([corr.n_ants, corr.n_bands*freqs.shape[0]], dtype=np.complex64)
     dc = np.zeros([dual_band_freqs.shape[0], corr.n_bls], dtype=np.complex64)
-    for ant in range(corr.n_ants):
-        phases[ant] = np.exp(1j * 2 * np.pi * dual_band_freqs * delays[ant] * 1e-12)
     for bln, bl in enumerate(corr.bl_order):
-        dc[:, bln] = (d[:, bln, 0, 1] + 1j*d[:, bln, 0, 0]) * (phases[bl[0]] * (-phases[bl[1]]))
+        # DELAYS ARE IN ADC CLOCKS!!
+        dc[:, bln] = (d[:, bln, 0, 1] + 1j*d[:, bln, 0, 0]) * np.exp(1j * 2 * np.pi * dual_band_freqs * (-delays[bl[0]] + delays[bl[1]]) / corr.adc_clk)
     d[:,:,0,1] = np.array(dc.real, dtype=np.int32)
     d[:,:,0,0] = np.array(dc.imag, dtype=np.int32)
 
@@ -238,8 +236,10 @@ if __name__ == '__main__':
                     ##print 'foo', np.array(datavec[200:210,5,0,1], dtype=np.int64)**2 + np.array(datavec[200:210,5,0,0], dtype=np.int64)**2
                     if (delays is None) or redis_delays_valid(corr, tsbuf[win_to_ship]):
                         delays = corr.get_coarse_delays()
+                        print delays
                     else:
                         logger.info('Redis delays newer than data -- not using them this time')
+                        print delays
                     # rotate the phases of the data array in place
                     unwrap_delays(corr, datavec, delays)
                     ##print 'bar', np.array(datavec[200:210,5,0,1], dtype=np.int64)**2 + np.array(datavec[200:210,5,0,0], dtype=np.int64)**2
