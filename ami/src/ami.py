@@ -237,7 +237,7 @@ class AmiDC(object):
         # This is the time we need to have loaded the next coarse delays by.
         return next_match
 
-    def get_source_delays(self, adc_clks=True):
+    def get_source_delays(self, adc_clks=False):
         """
         Return the latest per-antenna delays from redis.
         if adc_clocks = True, return delays in integral adc clocks.
