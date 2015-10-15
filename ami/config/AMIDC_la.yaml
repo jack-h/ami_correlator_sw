@@ -23,6 +23,11 @@ Configuration:
         runtime:
             fft_shift: 0b111011011011011
             ten_gbe:
+                # multicast order.
+                # 0 disables multicast
+                # 1 subscribes each receiver to a single address
+                # 2 subscribes each receiver to 2 addresses
+                multicast_order: 0
                 network: 10.1.10.100
                 #port: 10000
             one_gbe:
