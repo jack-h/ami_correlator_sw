@@ -236,10 +236,8 @@ if __name__ == '__main__':
                     ##print 'foo', np.array(datavec[200:210,5,0,1], dtype=np.int64)**2 + np.array(datavec[200:210,5,0,0], dtype=np.int64)**2
                     if (delays is None) or redis_delays_valid(corr, tsbuf[win_to_ship]):
                         delays = corr.get_coarse_delays()
-                        print delays
                     else:
                         logger.info('Redis delays newer than data -- not using them this time')
-                        print delays
                     # rotate the phases of the data array in place
                     unwrap_delays(corr, datavec, delays)
                     ##print 'bar', np.array(datavec[200:210,5,0,1], dtype=np.int64)**2 + np.array(datavec[200:210,5,0,0], dtype=np.int64)**2
