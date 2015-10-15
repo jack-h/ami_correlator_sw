@@ -19,8 +19,8 @@ if __name__ == '__main__':
     p.set_description(__doc__)
     p.add_option('-p', '--plot', dest='plot', type='int', default=0,
         help='Number of grabs to do before showing plots. Default = 0 = do not plot.')
-    p.add_option('-e', '--expire', dest='expire', type='int', default=5,
-        help='Expiry time of redis keys in seconds. Default = 5. 0 = do not expire')
+    p.add_option('-e', '--expire', dest='expire', type='int', default=30,
+        help='Expiry time of redis keys in seconds. Default = 30. 0 = do not expire')
     p.add_option('-m', '--monitor', dest='monitor', action='store_true', default=False,
         help='Monitor continuously')
 
