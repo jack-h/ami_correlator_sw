@@ -71,7 +71,10 @@ class AmiDC(object):
             self.initialise_x_engines(passive=False)
             self.reset_tge_flags()
             self.load_sync()
-            self.set_ip_base(self.c_correlator['ten_gbe']['network'])
+            if self.c_correlator['ten_gbe']['multicast_order'] != 0:
+                self.set_ip_base('224.0.2.0')
+            else:
+                self.set_ip_base(self.c_correlator['ten_gbe']['network'])
             self.start_tge_taps()
             self.set_chan_dests()
         else:
@@ -480,6 +483,7 @@ class AmiDC(object):
         Set the destination IPs / loopback/tge enables
         for the output data streams
         """
+        mc_order = self.c_correlator['ten_gbe']['multicast_order']
         for fn, feng in enumerate(self.fengs):
             this_board = feng.hostname
             for xn, xeng in enumerate(self.xengs):
@@ -489,7 +493,7 @@ class AmiDC(object):
             dest_bands = chan_flags % self.n_xengs  #The band each channel belongs to 
             #dest_ip_base = self.band2ip[dest_bands] & 0xff #The board-level IP (shift up 2 bits and add 0->3 for port level)
             dest_ip_base = self.band2ip[dest_bands] & 0xfffffffc #The board-level IP add 0->3 for port level)
-            my_ip_base = my_xeng.board_ip & 0xfffffffc
+            my_ip_base = my_xeng.rcvr_ip & 0xfffffffc
             
 
             lb_vld = np.array(dest_ip_base == my_ip_base, dtype=int)
@@ -527,19 +531,19 @@ class AmiDC(object):
             
 
             if feng.adc == 0:
-                flags = ((dest_ip_base & 0xff) + 0) + (sync<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags = ((dest_ip_base & 0xff) + 0 * mc_order) + (sync<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
                 flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
                 feng.roachhost.write('network_masker0_params', flags_str)
 
-                flags = ((dest_ip_base & 0xff) + 1) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags = ((dest_ip_base & 0xff) + 1 * mc_order) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
                 flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
                 feng.roachhost.write('network_masker1_params', flags_str)
             elif feng.adc == 1:
-                flags = ((dest_ip_base & 0xff) + 2) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags = ((dest_ip_base & 0xff) + 2 * mc_order) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
                 flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
                 feng.roachhost.write('network_masker2_params', flags_str)
 
-                flags = ((dest_ip_base & 0xff) + 3) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags = ((dest_ip_base & 0xff) + 3 * mc_order) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
                 flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
                 feng.roachhost.write('network_masker3_params', flags_str)
 
@@ -557,7 +561,7 @@ class AmiDC(object):
             dest_bands = (chan_flags >> 1) % self.n_xengs  #The band each channel belongs to (send two consecutive chans to each board, we will only validate the first)
             #dest_ip_base = self.band2ip[dest_bands] & 0xff #The board-level IP (shift up 2 bits and add 0->3 for port level)
             dest_ip_base = self.band2ip[dest_bands] & 0xfffffffc #The board-level IP add 0->3 for port level)
-            my_ip_base = my_xeng.board_ip & 0xfffffffc
+            my_ip_base = my_xeng.rcvr_ip & 0xfffffffc
 
             lb_vld = np.array(dest_ip_base == my_ip_base, dtype=int)
             tge_vld = np.array(lb_vld==0, dtype=int) * int(enable_output)
@@ -615,9 +619,15 @@ class AmiDC(object):
 
         self.band2ip = np.zeros(self.n_xengs, dtype=int)
         base_ip_int = helpers.ip_str2int(self.c_correlator['ten_gbe']['network'])
+        mc_order = self.c_correlator['ten_gbe']['multicast_order']
         for xn, xeng in enumerate(self.xengs):
-            xeng.board_ip = base_ip_int + 4*xn #board level IP. ports have this address + {0..3}
-            self.band2ip[xeng.band] = xeng.board_ip
+            if mc_order != 0:
+                xeng.rcvr_ip = (224<<24) + (0<<16) + (2<<8) + 128 + 4*mc_order*xn
+                if not passive:
+                    xeng.subscribe_mc(xeng.rcvr_ip, mc_order)
+            else:
+	        xeng.rcvr_ip = base_ip_int + 4*xn #board level IP. ports have this address + {0..3}
+            self.band2ip[xeng.band] = xeng.rcvr_ip
 
     def set_xeng_outputs(self):
         dest_ip = self.c_correlator['one_gbe']['dest_ip']

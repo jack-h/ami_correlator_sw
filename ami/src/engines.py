@@ -594,8 +594,19 @@ class XEngine(Engine):
     def reset_gbe(self):
         self.ctrl_sw_edge(1)
 
-    def set_tge_inputs(self):
+    def subscribe_mc(self, addr, n_addr=1):
         """
-        Configure input 10GbE data streams
+        Subscribe this X-engine to a multicast stream
         """
-        pass
+        for i in range(4):
+            a = addr+n_addr*i
+            self.roachhost.write_int('network_link%d_core'%(i+1), (addr+n_addr*i), offset=12)
+            self.roachhost.write_int('network_link%d_core'%(i+1), 2**32 - (2**n_addr - 1), offset=13)
+
+    def unsubscribe_mc(self):
+        """
+        Subscribe this X-engine to a multicast stream
+        """
+        for i in range(4):
+            self.roachhost.write_int('network_link%d_core'%(i+1), 0, offset=12)
+            self.roachhost.write_int('network_link%d_core'%(i+1), 0, offset=13)
