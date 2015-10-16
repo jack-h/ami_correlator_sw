@@ -461,9 +461,9 @@ class FEngine(Engine):
             pass
 
         self.acc_cnt = acc_cnt
-        d = np.zeros(self.n_chans)
-        s0 = np.array(struct.unpack('>%dL'%(self.n_chans/2), self.read('auto_snap_bram1', self.n_chans*4/2)))
-        s1 = np.array(struct.unpack('>%dL'%(self.n_chans/2), self.read('auto_snap_bram0', self.n_chans*4/2)))
+        d = np.ones(self.n_chans)
+        s0 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram1', self.n_chans*4/2)))
+        s1 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram0', self.n_chans*4/2)))
         if self.read_int('auto_snap_new_acc') != self.acc_cnt:
             self._logger.warning('Autocorr snap looks like it changed during read')
         
