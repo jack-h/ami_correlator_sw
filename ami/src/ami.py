@@ -669,23 +669,7 @@ class AmiDC(object):
         return value is that of the underlying FEngine method call.
         """
         self._logger.debug('Calling method %s against all F-engines in multi-thread mode'%method)
-        if callable(getattr(engines.FEngine,method)):
-            q = Queue.Queue()
-            for feng in self.fengs:
-                t = threading.Thread(target=_queue_instance_method, args=(q, feng.num, feng, method, args, kwargs))
-                t.daemon = True
-                t.start()
-            self._logger.debug('Threads joining')
-            q.join()
-            self._logger.debug('Threads joined')
-            rv = [None for feng in self.fengs]
-            for fn, feng in enumerate(self.fengs):
-                num, result = q.get()
-                rv[num] = result
-            return rv
-        else:
-            # no point in multithreading this
-            return [getattr(feng,method) for feng in self.fengs]
+        return self.do_for_all(method, self.fengs, *args, **kwargs)
 
     def all_xengs(self, method, *args, **kwargs):
         """
@@ -732,13 +716,12 @@ class AmiDC(object):
                 t = threading.Thread(target=_queue_instance_method, args=(q, ii, inst, method, args, kwargs))
                 t.daemon = True
                 t.start()
-            self._logger.debug('Threads joining')
-            q.join()
-            self._logger.debug('Threads joined')
             rv = [None for inst in instances]
-            for inst in instances:
+            for inst_n, inst in enumerate(instances):
                 num, result = q.get()
+                q.task_done()
                 rv[num] = result
+            q.join()
             return rv
         else:
             # no point in multithreading this
