@@ -7,8 +7,6 @@ import roach
 import numpy as np
 import scipy.linalg #for walsh (hadamard) matrices
 
-logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
-
 class Engine(object):
     """
     A class for F/X engines (or some other kind) which live in ROACH firmware.
@@ -18,7 +16,7 @@ class Engine(object):
     An engine requires a control register, whose value is tracked by this class
     to enable individual bits to be toggled.
     """
-    def __init__(self,roachhost,port=7147,boffile=None,ctrl_reg='ctrl',reg_suffix='',reg_prefix='',connect_passively=True,num=0,logger=logger):
+    def __init__(self,roachhost,port=7147,boffile=None,ctrl_reg='ctrl',reg_suffix='',reg_prefix='',connect_passively=True,num=0,logger=None):
         """
         Instantiate an engine which lives on ROACH 'roachhost' who listens on port 'port'.
         All shared memory belonging to this engine has a name beginning with 'reg_prefix'
@@ -29,7 +27,10 @@ class Engine(object):
         If 'connect_passively' is True, the Engine instance will be created and its current control
         software status read, but no changes to the running firmware will be made.
         """
-        self._logger = logger
+        self._logger = logger or logging.getLogger(__name__ + ' (%s:%d)'%(roachhost.host,num))
+        if len(self._logger.handlers) == 0:
+            helpers.add_default_log_handlers(self._logger)
+
         self.hostname = roachhost.host
         self.roachhost = roach.Roach(self.hostname, port)
         time.sleep(0.02)
@@ -217,6 +218,11 @@ class FEngine(Engine):
             self.set_adc_acc_len()
             self.set_fft_acc_len()
             self.set_ant_id(self.ant)
+        # Figure out if this has old of new style autocorr capture blocks
+        if 'auto_snap_new_acc' in self.listdev():
+            self.has_spectra_snap = False
+        else:
+            self.has_spectra_snap = True
 
     def set_walsh(self, N, noise, phase, period=5):
         """
@@ -439,6 +445,38 @@ class FEngine(Engine):
         return np.abs(float(v) / (16 * 256 * (self.adc_power_acc_len >> (8 + 4))))
 
     def get_spectra(self, autoflip=False):
+        if self.has_spectra_snap:
+            return self.get_spectra_snap(autoflip=autoflip)
+        else:
+            return self.get_spectra_nosnap(autoflip=autoflip)
+
+    def get_spectra_nosnap(self, autoflip=False):
+        acc_cnt = self.read_int('auto_snap_new_acc') #stupid regname, this is a counter
+        try:
+            while acc_cnt == self.acc_cnt:
+                time.sleep(0.05)
+                acc_cnt = self.read_int('auto_snap_new_acc')
+        except AttributeError:
+            # self.acc_cnt won't exist first time round
+            pass
+
+        self.acc_cnt = acc_cnt
+        d = np.zeros(self.n_chans)
+        s0 = np.array(struct.unpack('>%dL'%(self.n_chans/2), self.read('auto_snap_bram1', self.n_chans*4/2)))
+        s1 = np.array(struct.unpack('>%dL'%(self.n_chans/2), self.read('auto_snap_bram0', self.n_chans*4/2)))
+        if self.read_int('auto_snap_new_acc') != self.acc_cnt:
+            self._logger.warning('Autocorr snap looks like it changed during read')
+        
+        for i in range(4):
+            d[i::8]   = s0[i::4]
+            d[i+4::8] = s1[i::4]
+        
+        d /= float(self.fft_power_acc_len)
+        if autoflip and self.inv_band:
+            d = d[::-1]
+        return d
+
+    def get_spectra_snap(self, autoflip=False):
         d = np.zeros(self.n_chans)
         # arm snap blocks
         # WARNING: we can't gaurantee that they all trigger off the same pulse
