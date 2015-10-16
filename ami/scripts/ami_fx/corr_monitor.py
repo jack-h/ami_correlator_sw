@@ -40,26 +40,23 @@ if __name__ == '__main__':
     time.sleep(0.1)
 
     # turn on the noise switch
-    print 'attempting to turn on noise switches'
+    logger.info('attempting to turn on noise switches')
     a = corr.all_fengs('noise_switch_enable', True)
-    print 'done'
+    logger.info('noise switches activated')
 
     grab_n = 0
     x = np.zeros_like(corr.all_fengs_multithread('get_spectra', autoflip=False))
     while(True):
         tic = time.time()
-        print 'grabbing spectra'
         spectra = corr.all_fengs_multithread('get_spectra', autoflip=False)
-        print 'getting EQ from redis'
         eq = corr.all_fengs('get_eq', redishost=corr.redis_host, autoflip=False, per_channel=True)
         toc = time.time()
-        print 'New data acquired in time:', toc - tic
+        logger.debug('New data acquired at time %.2f in time %.2f:'%(time.time(), toc - tic))
         for fn, feng in enumerate(corr.fengs):
             key = 'STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band)
             d = spectra[fn] * np.abs(eq[fn])**2
             corr.redis_host.set(key, d.tolist(), ex=expire_time)
         logger.info('New monitor data sent at time %.2f'%time.time())
-        print opts.plot, grab_n
         if opts.plot != 0:
             x += spectra * np.abs(eq)**2
             grab_n += 1
