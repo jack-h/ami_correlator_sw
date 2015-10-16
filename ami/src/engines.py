@@ -7,6 +7,8 @@ import roach
 import numpy as np
 import scipy.linalg #for walsh (hadamard) matrices
 
+logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
+
 class Engine(object):
     """
     A class for F/X engines (or some other kind) which live in ROACH firmware.
@@ -16,7 +18,7 @@ class Engine(object):
     An engine requires a control register, whose value is tracked by this class
     to enable individual bits to be toggled.
     """
-    def __init__(self,roachhost,port=7147,boffile=None,ctrl_reg='ctrl',reg_suffix='',reg_prefix='',connect_passively=True,num=0,logger=None):
+    def __init__(self,roachhost,port=7147,boffile=None,ctrl_reg='ctrl',reg_suffix='',reg_prefix='',connect_passively=True,num=0,logger=logger):
         """
         Instantiate an engine which lives on ROACH 'roachhost' who listens on port 'port'.
         All shared memory belonging to this engine has a name beginning with 'reg_prefix'
@@ -27,9 +29,8 @@ class Engine(object):
         If 'connect_passively' is True, the Engine instance will be created and its current control
         software status read, but no changes to the running firmware will be made.
         """
-        self._logger = logger or logging.getLogger(__name__ + ' (%s:%d)'%(roachhost.host,num))
-        if len(self._logger.handlers) == 0:
-            helpers.add_default_log_handlers(self._logger)
+        self._logger = logger.getChild('(%s:%d)'%(roachhost.host,num))
+        self._logger.handlers = logger.handlers
 
         self.hostname = roachhost.host
         self.roachhost = roach.Roach(self.hostname, port)

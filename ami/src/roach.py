@@ -5,14 +5,16 @@ import numpy as np
 import re
 import qdr
 
+logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
+
 class Roach(katcp.FpgaClient):
     '''
     A minor expansion on the FpgaClient class adds a few methods.
     '''
-    def __init__(self, roachhost, port=7147, boffile=None, logger=None):
-        self._logger = logger or logging.getLogger(__name__ + ' (%s)'%roachhost)
-        if len(self._logger.handlers) == 0:
-            helpers.add_default_log_handlers(self._logger)
+    def __init__(self, roachhost, port=7147, boffile=None, logger=logger):
+
+        self._logger = logger.getChild('(%s)'%roachhost)
+        self._logger.handlers = logger.handlers
                 
         katcp.FpgaClient.__init__(self,roachhost, port, logger=self._logger)
         self.boffile = boffile
