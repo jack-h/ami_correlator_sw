@@ -14,7 +14,9 @@ Configuration:
     #boffile: amisa_2015_Mar_15_1605.bof
     #boffile: amisa_2015_Mar_17_1646.bof
     # changed autocorr capture
-    boffile: amisa_2015_Oct_15_1923.bof.gz
+    #boffile: amisa_2015_Oct_15_1923.bof.gz
+    #boffile: amisa_2015_Oct_16_1623.bof.gz 
+    boffile: amisa_2015_Oct_19_1257.bof.gz
     redis_host: localhost
     redis_port: 6379
     control_interface:
