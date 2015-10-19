@@ -220,7 +220,7 @@ class FEngine(Engine):
             self.set_fft_acc_len()
             self.set_ant_id(self.ant)
         # Figure out if this has old of new style autocorr capture blocks
-        if 'auto_snap_new_acc' in self.listdev():
+        if 'auto_snap_acc_cnt' in self.listdev():
             self.has_spectra_snap = False
         else:
             self.has_spectra_snap = True
@@ -451,21 +451,24 @@ class FEngine(Engine):
         else:
             return self.get_spectra_nosnap(autoflip=autoflip)
 
+    def set_auto_capture(self, val):
+        self.write_int('auto_snap_capture', int(val))
+
     def get_spectra_nosnap(self, autoflip=False):
-        acc_cnt = self.read_int('auto_snap_new_acc') #stupid regname, this is a counter
+        acc_cnt = self.read_int('auto_snap_acc_cnt')
         try:
             while acc_cnt == self.acc_cnt:
                 time.sleep(0.05)
-                acc_cnt = self.read_int('auto_snap_new_acc')
+                acc_cnt = self.read_int('auto_snap_acc_cnt')
         except AttributeError:
             # self.acc_cnt won't exist first time round
             pass
 
         self.acc_cnt = acc_cnt
         d = np.ones(self.n_chans)
-        s0 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram1', self.n_chans*4/2)))
-        s1 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram0', self.n_chans*4/2)))
-        if self.read_int('auto_snap_new_acc') != self.acc_cnt:
+        s0 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram0', self.n_chans*4/2)))
+        s1 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram1', self.n_chans*4/2)))
+        if self.read_int('auto_snap_acc_cnt') != self.acc_cnt:
             self._logger.warning('Autocorr snap looks like it changed during read')
         
         for i in range(4):
