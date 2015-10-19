@@ -52,11 +52,11 @@ if __name__ == '__main__':
 
     grab_n = 0
     logger.info('Grabbing a dummy spectra for array sizing')
-    x = np.zeros_like(corr.all_fengs_multithread('get_spectra', autoflip=False))
+    x = np.zeros_like(corr.all_fengs_multithread('get_spectra', autoflip=False, safe=False))
     logger.info('Beginning spectra grab loop')
     while(True):
         tic = time.time()
-        spectra = corr.all_fengs_multithread('get_spectra', autoflip=False)
+        spectra = corr.all_fengs_multithread('get_spectra', autoflip=False, safe=False)
         eq = corr.all_fengs('get_eq', redishost=corr.redis_host, autoflip=False, per_channel=True)
         toc = time.time()
         logger.debug('New data acquired at time %.2f in time %.2f:'%(time.time(), toc - tic))

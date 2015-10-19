@@ -445,16 +445,19 @@ class FEngine(Engine):
             v -= 2**64
         return np.abs(float(v) / (16 * 256 * (self.adc_power_acc_len >> (8 + 4))))
 
-    def get_spectra(self, autoflip=False):
+    def get_spectra(self, *args, **kwargs):
         if self.has_spectra_snap:
-            return self.get_spectra_snap(autoflip=autoflip)
+            return self.get_spectra_snap(*args, **kwargs)
         else:
-            return self.get_spectra_nosnap(autoflip=autoflip)
+            return self.get_spectra_nosnap(*args, **kwargs)
 
     def set_auto_capture(self, val):
         self.write_int('auto_snap_capture', int(val))
 
-    def get_spectra_nosnap(self, autoflip=False):
+    def get_spectra_nosnap(self, autoflip=False, safe=True):
+        if safe:
+            self.set_auto_capture(True)
+ 
         acc_cnt = self.read_int('auto_snap_acc_cnt')
         try:
             while acc_cnt == self.acc_cnt:
@@ -464,18 +467,21 @@ class FEngine(Engine):
             # self.acc_cnt won't exist first time round
             pass
 
+        if safe:
+            self.set_auto_capture(False)
+
         self.acc_cnt = acc_cnt
         d = np.ones(self.n_chans)
         s0 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram0', self.n_chans*4/2)))
         s1 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram1', self.n_chans*4/2)))
-        if self.read_int('auto_snap_acc_cnt') != self.acc_cnt:
+        if (not safe) and (self.read_int('auto_snap_acc_cnt') != self.acc_cnt):
             self._logger.warning('Autocorr snap looks like it changed during read')
         
         for i in range(4):
             d[i::8]   = s0[i::4]
             d[i+4::8] = s1[i::4]
         
-        d /= float(self.fft_power_acc_len)
+        d /= (2**20 * float(self.fft_power_acc_len)) #2**20 for binary point compensation
         if autoflip and self.inv_band:
             d = d[::-1]
         return d
