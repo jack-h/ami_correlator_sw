@@ -242,6 +242,7 @@ def get_meta_struct(maxant=10, maxsrc=16, maxagc=40):
        Unpackable('nsrc' ,     '!i'),
        Unpackable('noff' ,     '!i'),
        Unpackable('dummy',     '!i'),
+       Unpackable('ut1utc',    '!d'),
        Unpackable('smp_last',  '!d'),
        Unpackable('smp_ra',    '!d'),
        Unpackable('smp_dec',   '!d'),
@@ -273,7 +274,7 @@ class DataStruct(struct.Struct):
         and n_chans oof complex data.
         """
         if not rain_gauge:
-            form = '!lii%dl'%(2*n_chans*n_bls)
+            form = '!fii%dl'%(2*n_chans*n_bls)
         else:
-            form = '!lii%dl%df'%((2*n_chans*n_bls), n_chans*n_ants)
+            form = '!fii%dl%df'%((2*n_chans*n_bls), n_chans*n_ants)
         struct.Struct.__init__(self,form)
