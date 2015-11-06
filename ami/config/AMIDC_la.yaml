@@ -1,6 +1,7 @@
 Configuration:
     katcp_port: 7147
-    boffile: amila_2015_Jul_17_0831.bof
+    #boffile: amila_2015_Jul_17_0831.bof
+    boffile: amila_2015_Oct_19_1619.bof
     redis_host: localhost
     redis_port: 6379
     control_interface:
