@@ -274,7 +274,7 @@ class DataStruct(struct.Struct):
         and n_chans oof complex data.
         """
         if not rain_gauge:
-            form = '!fii%dl'%(2*n_chans*n_bls)
+            form = '!dii%dl'%(2*n_chans*n_bls)
         else:
-            form = '!fii%dl%df'%((2*n_chans*n_bls), n_chans*n_ants)
+            form = '!dii%dl%df'%((2*n_chans*n_bls), n_chans*n_ants)
         struct.Struct.__init__(self,form)
