@@ -6,7 +6,7 @@ import pylab
 import socket
 import ami.ami as AMI
 import ami.helpers as helpers
-import ami.amisa_control as control
+import ami.control as control
 import ami.file_writer as fw
 import pylab
 import signal

@@ -3,7 +3,7 @@ import time
 import socket
 import ami.ami as AMI
 import ami.helpers as helpers
-import ami.amisa_control as control
+import ami.control as control
 import signal
 import logging
 import struct
