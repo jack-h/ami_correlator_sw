@@ -30,7 +30,7 @@ class Engine(object):
         software status read, but no changes to the running firmware will be made.
         """
         self._logger = logger.getChild('(%s:%d)'%(roachhost.host,num))
-        self._logger.handlers = logger.handlers
+        #self._logger.handlers = logger.handlers
 
         self.hostname = roachhost.host
         self.roachhost = roach.Roach(self.hostname, port)
