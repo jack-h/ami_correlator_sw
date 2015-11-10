@@ -529,21 +529,20 @@ class AmiDC(object):
             self.redis_host.set('XENG%d_CHANNEL_MAP'%my_xeng.band, comp_chans)
             self._logger.debug('Xeng %d has channel map %r'%(my_xeng.num, comp_chans))
             
-
             if feng.adc == 0:
-                flags = ((dest_ip_base & 0xff) + 0 * mc_order) + (sync<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags = ((dest_ip_base & 0xff) + 0 * (mc_order or 1)) + (sync<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
                 flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
                 feng.roachhost.write('network_masker0_params', flags_str)
 
-                flags = ((dest_ip_base & 0xff) + 1 * mc_order) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags = ((dest_ip_base & 0xff) + 1 * (mc_order or 1)) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
                 flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
                 feng.roachhost.write('network_masker1_params', flags_str)
             elif feng.adc == 1:
-                flags = ((dest_ip_base & 0xff) + 2 * mc_order) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags = ((dest_ip_base & 0xff) + 2 * (mc_order or 1)) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
                 flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
                 feng.roachhost.write('network_masker2_params', flags_str)
 
-                flags = ((dest_ip_base & 0xff) + 3 * mc_order) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
+                flags = ((dest_ip_base & 0xff) + 3 * (mc_order or 1)) + (0<<16) + (tge_vld<<17) + (lb_vld<<18) + (eob<<19)
                 flags_str = np.array(flags, dtype=np.uint32).byteswap().tostring()
                 feng.roachhost.write('network_masker3_params', flags_str)
 
