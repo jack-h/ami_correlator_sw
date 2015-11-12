@@ -37,7 +37,9 @@ def get_mean_powers(r, c):
     return autos
 
 def get_mean_amps(r, c):
-    return np.sqrt(get_mean_powers(r,c)) / np.sqrt(2)
+    pows = get_mean_powers(r,c)
+    pows[pows<0] = 0 #the correlator sets unused chans to -1
+    return np.sqrt(pows) / np.sqrt(2)
     
     
 
