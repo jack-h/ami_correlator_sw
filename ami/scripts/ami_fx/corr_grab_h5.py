@@ -29,13 +29,16 @@ def flatten_dict(d, prefix='', separator=':'):
             rv[prefix+key] = val
     return rv
 
-def write_file_attributes(writer, meta):
+def write_file_attributes(writer, meta, r):
     for key, val in flatten_dict(meta['tel_def'], prefix='tel_def:').iteritems():
         writer.add_attr(key, val)
     for key, val in flatten_dict(meta['src_def'], prefix='src_def:').iteritems():
         writer.add_attr(key, val)
     for key, val in flatten_dict(meta['obs_def'], prefix='obs_def:').iteritems():
         writer.add_attr(key, val)
+    # extras from redis
+    writer.add_attr('last_fpga_programming', r.get('last_fpga_programming'))
+    
             
 def write_data(writer, d, timestamp, meta, **kwargs):
     if meta is not None:
@@ -201,7 +204,7 @@ if __name__ == '__main__':
                     if not opts.test_tx:
                         logger.info("Starting a new file with name %s"%fname)
                         writer.start_new_file(fname)
-                        write_file_attributes(writer, meta_buf[buf_id])
+                        write_file_attributes(writer, meta_buf[buf_id], corr.redis_host)
                     current_obs = meta_buf[buf_id]['obs_def']['name']
                 if time.time() - meta_buf[buf_id]['timestamp'] > 60*10:
                     if receiver_enable:
@@ -245,7 +248,7 @@ if __name__ == '__main__':
                 # Write to redis
                 redis.Redis.hmset(corr.redis_host, 'RECEIVER:xeng_raw0', {'val':datavec[:].tostring(), 'timestamp':tsbuf[win_to_ship]})
                 if receiver_enable or opts.nometa:
-                    write_data(writer,datavec,tsbuf[win_to_ship], meta_buf[win_to_ship], noise_demod=corr.noise_switched_from_redis(), phased_to=phased_to)
+                    write_data(writer,datavec,tsbuf[win_to_ship], meta_buf[win_to_ship], noise_demod=corr.noise_switched_from_redis(), phased_to=phased_to, coarse_delays=delays)
                 else:
                     logger.info('Got an integration but receiver is not enabled')
             elif int_cnt > N_WINDOWS: #ignore the first empty buffers
