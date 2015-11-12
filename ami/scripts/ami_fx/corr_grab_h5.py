@@ -248,7 +248,7 @@ if __name__ == '__main__':
                 # Write to redis
                 redis.Redis.hmset(corr.redis_host, 'RECEIVER:xeng_raw0', {'val':datavec[:].tostring(), 'timestamp':tsbuf[win_to_ship]})
                 if receiver_enable or opts.nometa:
-                    write_data(writer,datavec,tsbuf[win_to_ship], meta_buf[win_to_ship], noise_demod=corr.noise_switched_from_redis(), phased_to=phased_to, coarse_delays=delays)
+                    write_data(writer,datavec,tsbuf[win_to_ship], meta_buf[win_to_ship], noise_demod=corr.noise_switched_from_redis(), phased_to=phased_to, coarse_delays=np.array(delays, dtype=np.int32))
                 else:
                     logger.info('Got an integration but receiver is not enabled')
             elif int_cnt > N_WINDOWS: #ignore the first empty buffers
