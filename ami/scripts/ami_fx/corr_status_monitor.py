@@ -1,7 +1,7 @@
 import curses
 import curses.wrapper
 import time
-from ami import config_redis
+from ami import config_redis, antenna_functions
 import os
 import yaml
 import numpy as np
@@ -11,6 +11,13 @@ from corr import sim
 def get_free_disk_space(path):
     x = os.statvfs(path)
     return x.f_bavail * x.f_frsize / (1024.**3)
+
+def get_rain(r, c):
+    corr_conf = c['Configuration']['correlator']['hardcoded']
+    rv = []
+    for ant in range(corr_conf['n_ants']):
+        rv += [r.get('STATUS:noise_demod:ANT%d_low'%ant) + r.get('STATUS:noise_demod:ANT%d_high'%ant)]
+    return -np.array(rv)*10000
 
 def get_mean_powers(r, c):
     '''
@@ -82,8 +89,8 @@ def display_status(screen, r):
         screen.border(0)
         (ymax, xmax) = screen.getmaxyx()
 
-        curline = 4
-        col = 5
+        curline = 2
+        col = 3
         # Configuration information
         config_update_time = float(r.hget('config', 'unixtime'))
         if config_update_time != last_config_update_time:
@@ -119,38 +126,55 @@ def display_status(screen, r):
         curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'CORRELATOR STATS')
         curline = min(ymax-1, curline+2)
-        screen.addstr(curline, col, 'LAST CORRELATOR SYNC: ', keycol)
-        screen.addstr('%s'%time.ctime(r.get('sync_time')), valcol)
+
+        screen.addstr(curline, col, 'FPGAS PROGRAMMED AT : ', keycol)
+        screen.addstr('%s'%time.ctime(r.get('last_fpga_programming')), valcol)
         curline = min(ymax-1, curline+1)
+        screen.addstr(curline, col, 'LAST CORRELATOR PPS SYNC: ', keycol)
+        screen.addstr('%s'%time.ctime(r.get('sync_time')), valcol)
+        curline = min(ymax-1, curline+2)
+
         screen.addstr(curline, col, 'ANTENNA AMPLITUDES :', keycol)
         amps = get_mean_amps(r,config)
         n_ants, n_chans = amps.shape
-        for i in range(8):
-            start_chan = i*n_chans/8
-            stop_chan = (i+1)*n_chans/8
+        N_BANDS = 4
+        for i in range(N_BANDS):
+            start_chan = i*n_chans/N_BANDS
+            stop_chan = (i+1)*n_chans/N_BANDS
             mean = amps[:,start_chan:stop_chan].mean(axis=1)
             curline = min(ymax-1, curline+1)
-            screen.addstr(curline, col, 'CHANS %.4d-%.4d : '%(start_chan, stop_chan), keycol)
+            screen.addstr(curline, col, 'CHANS %4d-%4d : '%(start_chan, stop_chan), keycol)
             screen.addstr('%s'%np.array_str(mean, precision=3), valcol)
+        curline = min(ymax-1, curline+1)
+        screen.addstr(curline, col, 'ANTENNA RAIN GAUGE :', keycol)
+        amps[amps==0] = 1
+        rain = get_rain(r, config) / (amps**2)
+        n_ants, n_chans = rain.shape
+        N_BANDS = 4
+        for i in range(N_BANDS):
+            start_chan = i*n_chans/N_BANDS
+            stop_chan = (i+1)*n_chans/N_BANDS
+            mean = rain[:,start_chan:stop_chan].mean(axis=1)
+            curline = min(ymax-1, curline+1)
+            screen.addstr(curline, col, 'CHANS %4d-%4d : '%(start_chan, stop_chan), keycol)
+            screen.addstr('%s'%np.array_str(mean, precision=3), valcol)
+            #screen.addstr('%s'%rain, valcol)
 
-        # Status info
         curline = min(ymax-1, curline+2)
-        screen.addstr(curline, col, 'STATUS COUNTERS')
-        curline = min(ymax-1, curline+2)
-        screen.addstr(curline, col, 'N_INTEGRATIONS : ', keycol)
+        screen.addstr(curline, col, 'INTEGRATIONS RECEIVED: ', keycol)
         screen.addstr('%d'%r.get('corr_grab:n_integrations'), valcol)
         curline = min(ymax-1, curline+1)
-        screen.addstr(curline, col, 'N_TGE_ERRS: ', keycol)
+        screen.addstr(curline, col, 'TGE ERROR DETECTED: ', keycol)
         screen.addstr('%d'%r.get('corr_grab:n_tge_rearms'), valcol)
         curline = min(ymax-1, curline+1)
-        screen.addstr(curline, col, 'N_LOST_PACKETS: ', keycol)
+        screen.addstr(curline, col, 'LOST RECEIVER PACKETS: ', keycol)
         screen.addstr('%d'%r.get('corr_grab:n_lost_packets'), valcol)
 
         curline = min(ymax-1, curline+2)
-        screen.addstr(curline, col, 'N_RAIN_GAUGE_MISSING: ', keycol)
+        screen.addstr(curline, col, 'RAIN GAUGE MISSING INTEGRATIONS: ', keycol)
         screen.addstr('%d'%r.get('corr_monitor:auto_spectra_missing'), valcol)
         curline = min(ymax-1, curline+1)
-        screen.addstr(curline, col, 'N_RAIN_GAUGE_READ_ERRS: ', keycol)
+        screen.addstr(curline, col, 'RAIN GAUGE BAD READS: ', keycol)
         screen.addstr('%d'%r.get('corr_monitor:auto_spectra_overrun'), valcol)
 
         curline = min(ymax-1, curline+2)
