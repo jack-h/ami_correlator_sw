@@ -94,18 +94,18 @@ def display_status(screen, r):
         last_config_update_time = config_update_time
 
         screen.addstr(curline, col, time.ctime())
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'CONFIGURATION : ', keycol)
         screen.addstr('%s'%config_file, valcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'UPDATED : ', keycol)
         screen.addstr(time.ctime(config_update_time), valcol)
-        curline += 2
+        curline = min(ymax-1, curline+2)
 
         # Script alive checks
         is_alive, paths = check_scripts(r, scripts)
         screen.addstr(curline, col, 'SCRIPT STATUS')
-        curline += 2
+        curline = min(ymax-1, curline+2)
 
         for sn, s in enumerate(scripts):
             if is_alive[sn]:
@@ -113,15 +113,15 @@ def display_status(screen, r):
                 screen.addstr('(%s)'%paths[sn])
             else:
                 screen.addstr(curline, col, s+' is not alive', errcol)
-            curline += 1
+            curline = min(ymax-1, curline+1)
 
         # Misc correlator stats
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'CORRELATOR STATS')
-        curline += 2
+        curline = min(ymax-1, curline+2)
         screen.addstr(curline, col, 'LAST CORRELATOR SYNC: ', keycol)
         screen.addstr('%s'%time.ctime(r.get('sync_time')), valcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'ANTENNA AMPLITUDES :', keycol)
         amps = get_mean_amps(r,config)
         n_ants, n_chans = amps.shape
@@ -129,69 +129,67 @@ def display_status(screen, r):
             start_chan = i*n_chans/8
             stop_chan = (i+1)*n_chans/8
             mean = amps[:,start_chan:stop_chan].mean(axis=1)
-            curline += 1
+            curline = min(ymax-1, curline+1)
             screen.addstr(curline, col, 'CHANS %.4d-%.4d : '%(start_chan, stop_chan), keycol)
             screen.addstr('%s'%np.array_str(mean, precision=3), valcol)
 
         # Status info
-        curline += 2
+        curline = min(ymax-1, curline+2)
         screen.addstr(curline, col, 'STATUS COUNTERS')
-        curline += 2
+        curline = min(ymax-1, curline+2)
         screen.addstr(curline, col, 'N_INTEGRATIONS : ', keycol)
         screen.addstr('%d'%r.get('corr_grab:n_integrations'), valcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'N_TGE_ERRS: ', keycol)
         screen.addstr('%d'%r.get('corr_grab:n_tge_rearms'), valcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'N_LOST_PACKETS: ', keycol)
         screen.addstr('%d'%r.get('corr_grab:n_lost_packets'), valcol)
 
-        curline += 2
+        curline = min(ymax-1, curline+2)
         screen.addstr(curline, col, 'N_RAIN_GAUGE_MISSING: ', keycol)
         screen.addstr('%d'%r.get('corr_monitor:auto_spectra_missing'), valcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'N_RAIN_GAUGE_READ_ERRS: ', keycol)
         screen.addstr('%d'%r.get('corr_monitor:auto_spectra_overrun'), valcol)
 
-        curline +=2
+        curline = min(ymax-1, curline+2)
         screen.addstr(curline, col, 'GEOMETRIC DELAYS (ps): ', keycol)
         screen.addstr('%s'%r.get('CONTROL')['delay'], valcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'APPLIED DELAYS (ps)  : ', keycol)
         screen.addstr('%s'%(map(int, np.array(r.get('coarse_delays'), dtype=np.float32) / config['FEngine']['adc_clk'] * 1e6)), valcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'APPLIED DELAYS VALID AT: ', keycol)
         screen.addstr('%.1f seconds ago'%(time.time() - r.get('coarse_delays_valid_at')), valcol)
 
         # Observation info
         obs_info = r.get('CONTROL')['obs_def']
         obs_stat = r.get('CONTROL')['obs_status']
-        curline += 2
+        curline = min(ymax-1, curline+2)
         screen.addstr(curline, col, 'OBSERVATION INFO')
-        curline += 2
+        curline = min(ymax-1, curline+2)
         screen.addstr(curline, col, 'MODE : ', keycol)
         if obs_stat == 4:
             screen.addstr('observing', valcol)
         else:
             screen.addstr('not observing', errcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'NAME : ', keycol)
         screen.addstr('%s'%obs_info['name'], valcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'OBSERVER : ', keycol)
         screen.addstr('%s'%obs_info['observer'], valcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'FILE : ', keycol)
         screen.addstr('%s'%obs_info['file'], valcol)
-        curline += 1
+        curline = min(ymax-1, curline+1)
         screen.addstr(curline, col, 'COMMENT : ', keycol)
         screen.addstr('%s'%obs_info['comment'].rstrip(), valcol)
-        curline += 1
-        curline += 1
+        curline = min(ymax-1, curline+2)
         screen.addstr(curline, col, 'INTEGRATION TIME: ', keycol)
         screen.addstr('%.3f seconds'%get_int_time(config), valcol)
-        curline += 1
-        curline += 1
+        curline = min(ymax-1, curline+2)
         
         for disk in ['/media/data0', '/media/data1']:
             ds = get_free_disk_space(disk)
@@ -200,7 +198,11 @@ def display_status(screen, r):
                 screen.addstr('%.1f GB'%ds, errcol)
             else:
                 screen.addstr('%.1f GB'%ds, valcol)
-            curline += 1
+            curline = min(ymax-1, curline+1)
+
+        #alert the used if we've run out of screen space
+        if curline == ymax-1:
+            screen.addstr(curline, col, 'WINDOW TOO SHORT!', errcol)
         
 
         screen.refresh()
