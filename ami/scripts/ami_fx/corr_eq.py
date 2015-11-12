@@ -114,7 +114,7 @@ if __name__ == '__main__':
             pylab.ylabel("Power (db)")
             pylab.xlabel("Decimated Channel Number")
 
-        eq = (np.sqrt(1./d)) * opts.targetpower
+        eq = np.sqrt((1./d) * opts.targetpower)
         #eq[eq>np.mean(eq)*opts.cutoff] = 0
         eq[d<lowlimit] = 0
         eq = eq[::decimation]
