@@ -41,6 +41,10 @@ if __name__ == '__main__':
     corr = AMI.AmiDC(config_file=config_file, passive=True, skip_prog=True)
     time.sleep(0.1)
 
+    # redis counters for status
+    corr.redis_host.set('corr_monitor:auto_spectra_overrun', 0)
+    corr.redis_host.set('corr_monitor:auto_spectra_missing', 0)
+
     # enable the autocorr capture logic
     logger.info('Turning on auto spectra capturer')
     a = corr.all_fengs('set_auto_capture', True)
@@ -53,18 +57,36 @@ if __name__ == '__main__':
     grab_n = 0
     logger.info('Grabbing a dummy spectra for array sizing')
     x = np.zeros_like(corr.all_fengs_multithread('get_spectra', autoflip=False, safe=False))
+    spectra = np.zeros_like(x)
     logger.info('Beginning spectra grab loop')
+    last_spectra = 0
+
     while(True):
         tic = time.time()
-        spectra = corr.all_fengs_multithread('get_spectra', autoflip=False, safe=False)
+        this_spectra = corr.fengs[-1].wait_for_new_spectra(last_spectra=last_spectra) 
+        #for i in range(16):
+        #    t0 = time.time()
+        #    spectra[i] = corr.fengs[i].get_async_spectra(autoflip=False) 
+        #    t1 = time.time()
+        #    print '%.3fs to catch data from F-engine %d'%(t1-t0, i)
+        spectra = corr.all_fengs_multithread('get_async_spectra', autoflip=False)
+        this_spectra_check = corr.fengs[-1].read_int('auto_snap_acc_cnt')
+
+        if (this_spectra_check != this_spectra):
+            logger.warning('Looks like a spectra changed during read. Expected %d. Check after read of %d'%(this_spectra, this_spectra_check))
+            corr.redis_host.hincrby('corr_monitor:auto_spectra_overrun', 'val', 1)
+        if (last_spectra != this_spectra_check-1):
+            logger.warning('Looks like a spectra was missed. Expected %d. Check after read of %d'%(last_spectra+1, this_spectra_check))
+            corr.redis_host.hincrby('corr_monitor:auto_spectra_missing', 'val', 1)
+        last_spectra = this_spectra_check
+
         eq = corr.all_fengs('get_eq', redishost=corr.redis_host, autoflip=False, per_channel=True)
-        toc = time.time()
-        logger.debug('New data acquired at time %.2f in time %.2f:'%(time.time(), toc - tic))
         for fn, feng in enumerate(corr.fengs):
             key = 'STATUS:noise_demod:ANT%d_%s'%(feng.ant, feng.band)
             d = spectra[fn] * np.abs(eq[fn])**2
             corr.redis_host.set(key, d.tolist(), ex=expire_time)
         logger.info('New monitor data sent at time %.2f'%time.time())
+	corr.report_alive(__file__)
         if opts.plot != 0:
             x += spectra #* np.abs(eq)**2
             grab_n += 1
@@ -74,7 +96,10 @@ if __name__ == '__main__':
         if (opts.plot == 0) and not opts.monitor:
             break
 
-    if opts.plot:
+        toc = time.time()
+        logger.info('monitor loop complete at time %.2f in time %.2f:'%(time.time(), toc - tic))
+
+    if opts.plot != 0:
         pylab.figure(0)
         for fn, feng in enumerate(corr.fengs):
             #pylab.subplot(2,2,fn+1)

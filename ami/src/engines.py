@@ -454,6 +454,15 @@ class FEngine(Engine):
     def set_auto_capture(self, val):
         self.write_int('auto_snap_capture', int(val))
 
+    def wait_for_new_spectra(self, last_spectra=None):
+        if last_spectra is None:
+            last_spectra = self.read_int('auto_snap_acc_cnt')
+        acc_cnt = self.read_int('auto_snap_acc_cnt')
+        while acc_cnt == last_spectra:
+            time.sleep(0.001)
+            acc_cnt = self.read_int('auto_snap_acc_cnt')
+        return acc_cnt
+
     def get_spectra_nosnap(self, autoflip=False, safe=True):
         if safe:
             self.set_auto_capture(True)
@@ -461,7 +470,7 @@ class FEngine(Engine):
         acc_cnt = self.read_int('auto_snap_acc_cnt')
         try:
             while acc_cnt == self.acc_cnt:
-                time.sleep(0.05)
+                time.sleep(0.01)
                 acc_cnt = self.read_int('auto_snap_acc_cnt')
         except AttributeError:
             # self.acc_cnt won't exist first time round
@@ -476,6 +485,22 @@ class FEngine(Engine):
         s1 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram1', self.n_chans*4/2)))
         if (not safe) and (self.read_int('auto_snap_acc_cnt') != self.acc_cnt):
             self._logger.warning('Autocorr snap looks like it changed during read')
+        
+        for i in range(4):
+            d[i::8]   = s0[i::4]
+            d[i+4::8] = s1[i::4]
+        
+        d /= (2**20 * float(self.fft_power_acc_len)) #2**20 for binary point compensation
+        if autoflip and self.inv_band:
+            d = d[::-1]
+        return d
+
+    def get_async_spectra(self, autoflip=False):
+        d = np.zeros(self.n_chans)
+        s0 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram0', self.n_chans*4/2)))
+        s1 = np.array(struct.unpack('>%dl'%(self.n_chans/2), self.read('auto_snap_bram1', self.n_chans*4/2)))
+        #s0 = self.read('auto_snap_bram0', self.n_chans*4/2)
+        #s1 = self.read('auto_snap_bram1', self.n_chans*4/2)
         
         for i in range(4):
             d[i::8]   = s0[i::4]
