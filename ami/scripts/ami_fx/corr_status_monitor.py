@@ -27,10 +27,11 @@ def get_mean_powers(r, c):
             auto_indices[bl[0]] = bn
     # get current data and store as numpy array
     data, ts = r.hmget('RECEIVER:xeng_raw0', ['val', 'timestamp'])
+    n_chans = c['FEngine']['n_chans']
     ts = float(ts)
-    data_c = np.fromstring(data, dtype=np.int32).reshape([corr_conf['n_bands'] * corr_conf['n_chans'], n_bls, 1, 2])
+    data_c = np.fromstring(data, dtype=np.int32).reshape([corr_conf['n_bands'] * n_chans, n_bls, 1, 2])
     # carve out the autos
-    autos = np.zeros([corr_conf['n_ants'], corr_conf['n_bands'] * corr_conf['n_chans']], dtype=np.float32)
+    autos = np.zeros([corr_conf['n_ants'], corr_conf['n_bands'] * n_chans], dtype=np.float32)
     for an, auto_index in enumerate(auto_indices):
         autos[an] = data_c[:, auto_index, 0, 1] / c['XEngine']['acc_len'] / corr_conf['window_len'] #This is scaled relative to a correlator input between +/-7
     return autos
