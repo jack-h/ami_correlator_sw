@@ -80,12 +80,20 @@ def display_status(screen, r):
     valcol = curses.color_pair(2)
     errcol = curses.color_pair(3)
 
+    # Configuration information
+    last_config_update_time = float(r.hget('config', 'unixtime'))
+    host = r.hget('config', 'host')
+    fn = r.hget('config', 'file')
+    config_file = '%s:%s'%(host, fn)
+    config = yaml.load(r.hget('config', 'conf'))
+
+    # Construct array object for LST
+    array = antenna_functions.AntArray([config['Array']['lat'], config['Array']['lon']], [])
 
     # scripts to check aliveness
     scripts = ['corr_track_delays.py', 'corr_grab_h5.py', 'corr_monitor.py', 'corr_ctrl_redis_bridge.py']
     
 
-    last_config_update_time = 0
     while(True):
         
         screen.erase()
@@ -101,7 +109,7 @@ def display_status(screen, r):
             fn = r.hget('config', 'file')
             config_file = '%s:%s'%(host, fn)
             config = yaml.load(r.hget('config', 'conf'))
-        last_config_update_time = config_update_time
+            last_config_update_time = config_update_time
 
         screen.addstr(curline, col, time.ctime())
         curline = min(ymax-1, curline+1)
@@ -195,6 +203,9 @@ def display_status(screen, r):
         obs_stat = r.get('CONTROL')['obs_status']
         curline = min(ymax-1, curline+2)
         screen.addstr(curline, col, 'OBSERVATION INFO')
+        curline = min(ymax-1, curline+2)
+        screen.addstr(curline, col, 'LST: ', keycol)
+        screen.addstr('%s'%(array.get_sidereal_time(time.time())), valcol)
         curline = min(ymax-1, curline+2)
         screen.addstr(curline, col, 'MODE : ', keycol)
         if obs_stat == 4:
