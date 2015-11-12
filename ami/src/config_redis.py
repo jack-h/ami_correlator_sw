@@ -26,43 +26,54 @@ def write_config_to_redis(configfile):
 
 class JsonRedis(redis.Redis):
     '''
-    As redis.Redis, but read and write json strings
+    As redis.Redis, but read and write json strings. Also make all
+    set calls write hashes with a timestamp
     '''
 
     def get(self, name):
-        v = redis.Redis.get(self, name)
-        if v is None:
-            logger.error('Redis Key %s could not be read -- trying to get it\'s last update time...'%name)
-            t = redis.Redis.get(self, '%s:last_update_time'%name)
-            if t is None:
-                logger.error('Couldn\'t find an update time')
+        try:
+            val, updated = map(json.loads, self.hmget(name, ['val', 'updated']))
+            return val
+        except:
+            if not self.exists(name):
+                logger.error('Couldn\'t find redis key %s'%name)
             else:
-                t = json.loads(t)
-                logger.warning('Last update time was %d, (%d seconds in the past)'%(t, time.time() - t))
-            return None
-        else:
-            return json.loads(v)
+                if not self.hexists(name, 'val'):
+                    logger.error('Couldn\'t find value for redis key %s'%name)
+                if not self.hexists(name, 'updated'):
+                    logger.warning('Couldn\'t find update time for redis key %s'%name)
+                try:
+                    return json.loads(redis.Redis.get(self, name))
+                except:
+                    logger.error('Tried to read redis key %s as value (not hash) and failed'%name)
+                
 
     def get_update_time(self, name):
-        return json.loads(redis.Redis.get(self, '%s:last_update_time'%name))
+        return json.loads(self.hget(name, 'updated'))
 
     def get_age(self, name):
         update_time = self.get_update_time(name)
         return time.time() - update_time
 
-    def set(self, name, value, **kwargs):
+    def set(self, name, value, force_timestamp=False, **kwargs):
         '''
         JSONify the input and send to redis.
-        Automatically send a key containing the
-        update time, with keyname 'name:last_update_time:'
+        Write as a hash containing the
+        update time, with keyname 'last_update_time'
         '''
-        if 'ex' in kwargs.keys():
-            # This should work as a kwarg to Redis.set, but it doesn't
-            self.setex(name, json.dumps(value), kwargs['ex'])
+        if not force_timestamp:
+            update_time = json.dumps(time.time())
         else:
-            redis.Redis.set(self, name, json.dumps(value), **kwargs)
-
-        redis.Redis.set(self, name+':last_update_time', json.dumps(time.time()))
-        
-
+            update_time = json.dumps(force_timestamp)
+        if ('nx' in kwargs.keys()) and (not self.exists(name)):
+            self.hmset(name, {'val':json.dumps(value), 'updated':update_time})
+        elif ('xx' in kwargs.keys()) and (self.exists(name)):
+            self.hmset(name, {'val':json.dumps(value), 'updated':update_time})
+        else:
+            self.hmset(name, {'val':json.dumps(value), 'updated':update_time})
+            
+        if 'ex' in kwargs.keys():
+            self.expire(name, kwargs['ex'])
+        elif 'px' in kwargs.keys():
+            self.expire(name, kwargs['px'] / 1e3)
 

@@ -86,6 +86,9 @@ class AmiDC(object):
             # Also write to the same roach's GPIO outputs.
             feng.roachhost.write('gpio_switch_states', dat.tostring())
 
+    def report_alive(self, name, timeout=5):
+        self.redis_host.set(name+'_ALIVE', time.time(), ex=timeout)
+
     def set_phase_switches(self, override=None):
         '''
         Override phase switches enable with specified state.
@@ -247,13 +250,17 @@ class AmiDC(object):
         if adc_clocks = True, return delays in integral adc clocks.
         else, return delays in ps.
         """
-        age = self.redis_host.get_age('CONTROL:delay')
-        if age > 10:
-            logger.warning('Obtained delays from redis but they are %d seconds old'%age)
-        if adc_clks:
-            return np.array(1e-12 * self.adc_clk * np.array(self.redis_host.get('CONTROL:delay')), dtype=int)
-        else:
-            return np.array(self.redis_host.get('CONTROL:delay'))
+        try:
+            age = self.redis_host.get_age('CONTROL')
+            if age > 10:
+                logger.warning('Obtained delays from redis but they are %d seconds old'%age)
+            if adc_clks:
+                return np.array(1e-12 * self.adc_clk * np.array(self.redis_host.get('CONTROL')['delay']), dtype=int)
+            else:
+                return np.array(self.redis_host.get('CONTROL')['delay'])
+        except TypeError:
+            logger.warning('Couldn\'t read source delays from Redis. Using zero delays')
+            return np.zeros(self.n_ants)
 
     def update_coarse_delays(self, delays=None):
         if delays is None:
@@ -709,18 +716,23 @@ class AmiDC(object):
         The return value is a list, as in [instance.method() for instance in instances]
         """
         self._logger.debug('Calling method %s in multi-thread mode'%method)
+        t0 = time.time()
         if callable(getattr(instances[0],method)):
             q = Queue.Queue()
             for ii, inst in enumerate(instances):
                 t = threading.Thread(target=_queue_instance_method, args=(q, ii, inst, method, args, kwargs))
                 t.daemon = True
                 t.start()
+            t1 = time.time()
             rv = [None for inst in instances]
             for inst_n, inst in enumerate(instances):
                 num, result = q.get()
                 q.task_done()
                 rv[num] = result
+            t2 = time.time()
             q.join()
+            t3=time.time()
+            print 'thread starting: %.3fs; q getting %.3fs; joining %.3fs'%(t1-t0, t2-t1, t3-t2)
             return rv
         else:
             # no point in multithreading this

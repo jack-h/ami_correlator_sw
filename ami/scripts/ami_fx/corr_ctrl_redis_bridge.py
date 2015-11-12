@@ -11,7 +11,7 @@ import redis
 import numpy as np
 import pylab
 
-logger = helpers.add_default_log_handlers(logging.getLogger(__name__))
+logger = helpers.add_default_log_handlers(logging.getLogger("%s:%s"%(__file__,__name__)))
 
 def struct_to_redis(redis, struct, prefix='CONTROL:'):
     for entry in struct.entries:
@@ -79,7 +79,12 @@ if __name__ == '__main__':
     print 'Will send %d baselines'%len(BLS_TO_SEND)
     print BLS_TO_SEND
 
-    corrdat = np.fromstring(redis.Redis.get(corr.redis_host, 'RECEIVER:xeng_raw0'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
+    try:
+        corrdat = np.fromstring(redis.Redis.hget(corr.redis_host, 'RECEIVER:xeng_raw0', 'val'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
+    except TypeError:
+        logger.warning('Couldn\'t unpack correlator data from redis. Using zeros')    
+        corrdat = np.zeros([corr.n_bands * 2048, corr.n_bls, 1, 2], dtype=np.int32)
+        
     corrdat_txbuf = np.zeros_like(corrdat[:, range(len(BLS_TO_SEND)), :, :])
     reduce_bl_order = gen_casper2reduce_bls(corr.n_ants, corr.bl_order, reduce_order=BLS_TO_SEND)
     print 'REDUCE baseline order:', reduce_bl_order
@@ -109,14 +114,22 @@ if __name__ == '__main__':
     corr_cnt = 0
     while(True):
         if(ctrl.try_recv() == 0):
+	    corr.report_alive(__file__)
             # bridge received meta data -> redis
 	    print 'Writing Redis keys at time', time.time()
-            struct_to_redis(corr.redis_host, ctrl.meta_data, prefix='CONTROL:')
+            #struct_to_redis(corr.redis_host, ctrl.meta_data, prefix='CONTROL:')
+            corr.redis_host.set('CONTROL', ctrl.meta_data.dict_repr)
             # bridge correlator data from redis -> control socket
-            ts = corr.redis_host.get('RECEIVER:timestamp0')
-            # Only check for new correlations if we have new meta data
-            #if ts != last_corr_time:
-            corrdat = np.fromstring(redis.Redis.get(corr.redis_host, 'RECEIVER:xeng_raw0'), dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
+            ## Only check for new correlations if we have new meta data
+            ##if ts != last_corr_time:
+            try:
+                data, ts = redis.Redis.hmget(corr.redis_host, 'RECEIVER:xeng_raw0', ['val', 'timestamp'])
+                corrdat = np.fromstring(data, dtype=np.int32).reshape([corr.n_bands * 2048, corr.n_bls, 1, 2])
+                ts = float(ts)
+            except TypeError:
+                logger.warning('Couldn\'t unpack correlator data from redis. Using zeros')    
+                corrdat = np.zeros([corr.n_bands * 2048, corr.n_bls, 1, 2], dtype=np.int32)
+                ts = 0.0
             for bln, bl in enumerate(reduce_bl_order):
                 corrdat_txbuf[:,bln,:,:] = corrdat[:,bl['bl'],:,:]
                 if bl['conj']:

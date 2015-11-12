@@ -20,42 +20,39 @@ logger = helpers.add_default_log_handlers(logging.getLogger("%s:%s"%(__file__,__
 
 #type_unicode = h5py.special_dtype(vlen=unicode)
 
+def flatten_dict(d, prefix='', separator=':'):
+    rv = {}
+    for key, val in d.iteritems():
+        if isinstance(val, dict):
+            flatten_dict(val, prefix=prefix+key+separator)
+        else:
+            rv[prefix+key] = val
+    return rv
+
+def write_file_attributes(writer, meta):
+    for key, val in flatten_dict(meta['tel_def'], prefix='tel_def:').iteritems():
+        writer.add_attr(key, val)
+    for key, val in flatten_dict(meta['src_def'], prefix='src_def:').iteritems():
+        writer.add_attr(key, val)
+    for key, val in flatten_dict(meta['obs_def'], prefix='obs_def:').iteritems():
+        writer.add_attr(key, val)
+            
 def write_data(writer, d, timestamp, meta, **kwargs):
     if meta is not None:
         for key, val in meta.iteritems():
-           try:
-               length = len(val)
-               data_type = type(val[0])
-           except TypeError:
-               length = 1
-               data_type = type(val)
-           writer.append_data(key, [length], val, data_type)
+           if not isinstance(val, dict):
+               # don't write nested dictionaries.
+               try:
+                   length = len(val)
+                   data_type = type(val[0])
+               except TypeError:
+                   length = 1
+                   data_type = type(val)
+               writer.append_data(key, [length], val, data_type)
     writer.append_data('xeng_raw0', d.shape, d, np.int32)
     writer.append_data('timestamp0', [1], timestamp, np.float64)
     for key, value in kwargs.iteritems():
         writer.append_data(key, value.shape, value, value.dtype)
-
-def get_meta_keys(redis_host):
-    sampled_meta_keys = []
-    file_meta_keys = []
-    for key in redis_host.keys():
-        ks = key.split(':')
-        if (ks[0] == "CONTROL") and (ks[-1] != "last_update_time"):
-            if len(ks) > 2:
-                file_meta_keys += [key.lstrip('CONTROL:')]
-            else:
-                sampled_meta_keys += [key.lstrip('CONTROL:')]
-    return file_meta_keys, sampled_meta_keys
-
-def get_meta(redis_host, keys):
-    extkeys = []
-    for k in keys:
-        extkeys += ['CONTROL:'+k]
-    jsonvals = redis_host.mget(extkeys)
-    ret_dict = {}
-    for kn, key in enumerate(keys):
-        ret_dict[key] = json.loads(jsonvals[kn])
-    return ret_dict
 
 def redis_delays_valid(corr, time):
     # time is a timestamp of the centre of an integration. the
@@ -120,6 +117,10 @@ if __name__ == '__main__':
     writer = fw.H5Writer(config_file=config_file)
     writer.set_bl_order(corr.bl_order)
 
+    # Set some status counters
+    corr.redis_host.set('corr_grab:n_integrations', 0)
+    corr.redis_host.set('corr_grab:n_tge_rearms', 0)
+    corr.redis_host.set('corr_grab:n_lost_packets', 0)
 
 
     # get the mapping from xeng_id, chan_index -> total channel number
@@ -129,8 +130,6 @@ if __name__ == '__main__':
     for xn in range(corr.n_xengs):
         chan_map[xn * chans_per_xeng: (xn+1) * chans_per_xeng] = corr.redis_host.get('XENG%d_CHANNEL_MAP'%xn)[:]
 
-    # get the list of meta data names from redis
-    file_mk, samp_mk = get_meta_keys(corr.redis_host)
     meta = None #Default value before the receive loop updates the meta data
 
     # Packet buffers
@@ -140,7 +139,7 @@ if __name__ == '__main__':
     pkt_size = struct.calcsize('%d%s'%(2*corr.n_bls, corr.config['Configuration']['correlator']['hardcoded']['output_format'])) + header_size
     datbuf = np.ones([N_WINDOWS, corr.n_bands * 2048, corr.n_bls*2], dtype=np.int32) * -1
     tsbuf = np.ones(N_WINDOWS, dtype=float) * -1
-    datctr= np.zeros(N_WINDOWS)
+    datctr= np.zeros(N_WINDOWS, dtype=np.int32)
     acc_len = corr.config['XEngine']['acc_len']
     meta_buf = [{} for i in range(N_WINDOWS)]
 
@@ -169,6 +168,7 @@ if __name__ == '__main__':
     delays = None
     receiver_enable = False
     last_recv_rst = time.time()
+    int_cnt = 0
     while True:
         data= s.recv(pkt_size)
         mcnt, xeng, offset = struct.unpack('>qll', data[0:header_size])
@@ -185,25 +185,24 @@ if __name__ == '__main__':
             logger.error('(check 1) timestamp desync on xeng %d, (2xXENG=%d, mod(mcnt,4096) = %d)'%(xeng, xeng*2, mcnt%4096))
 
         if (buf_id != last_buf_id):
+	    corr.report_alive(__file__)
             sys.stdout.flush()
             if not opts.nometa:
                 # Before we deal with the new accumulation, get the current metadata
-                meta_buf[buf_id] = get_meta(corr.redis_host, samp_mk)
-                file_meta = get_meta(corr.redis_host, file_mk)
+                meta_buf[buf_id] = corr.redis_host.get('CONTROL')
                 receiver_enable = (meta_buf[buf_id]['obs_status']==4)
                 if not receiver_enable:
                     current_obs = None
                     writer.close_file()
-                elif file_meta['obs_def:name'] != current_obs:
+                elif meta_buf[buf_id]['obs_def']['name'] != current_obs:
                     writer.close_file()
                     # fname = 'corr_%s_%d.h5'%(file_meta['obs_def:file'], meta_buf[buf_id]['timestamp'])
-                    fname = '%s.h5'%(file_meta['obs_def:file'])
+                    fname = '%s.h5'%(meta_buf[buf_id]['obs_def']['file'])
                     if not opts.test_tx:
                         logger.info("Starting a new file with name %s"%fname)
                         writer.start_new_file(fname)
-                        for key, val in file_meta.iteritems():
-                            writer.add_attr(key, val)
-                    current_obs = file_meta['obs_def:name']
+                        write_file_attributes(writer, meta_buf[buf_id])
+                    current_obs = meta_buf[buf_id]['obs_def']['name']
                 if time.time() - meta_buf[buf_id]['timestamp'] > 60*10:
                     if receiver_enable:
                         logger.warning("10 minutes has elapsed since last valid meta timestamp. Closing files")
@@ -221,45 +220,48 @@ if __name__ == '__main__':
             win_to_ship = (buf_id - (N_WINDOWS // 2)) % N_WINDOWS
 	    this_int = time.time()
             logger.info('got window %d after %.4f seconds (mcnt offset %.4f), shipping window %d (time %.5f)'%(buf_id, this_int - last_int, tsbuf[win_to_ship] - tsbuf[(win_to_ship-1)%N_WINDOWS], win_to_ship, tsbuf[win_to_ship]))
-            if receiver_enable or opts.nometa:
-                # When the buffer ID changes, ship the window 1/2 a circ. buffer behind
-                if datctr[win_to_ship] == corr_chans:
-                    #logger.info('# New integration is complete after %.2f seconds (mcnt offset %.2f) #'%(this_int - last_int, tsbuf[win_to_ship] - tsbuf[(win_to_ship-1)%N_WINDOWS]))
-                    datavec = np.reshape(datbuf[win_to_ship], [corr.n_bands * 2048, corr.n_bls, 1, 2]) #chans * bls * pols * r/i
-                    # Write integration
-                    phased_to = np.array([corr.array.get_sidereal_time(tsbuf[win_to_ship]), corr.array.lat_r])
-                    # If the accumulation timestamp is later than the coarse delays
-                    # stored in redis, get the new delays set and use that for phase
-                    # rotation. Otherwise, keep using the last delay set.
-                    # This assumes that delays are updated in redis slowly compared to
-                    # integration time, which should be a safe assumption.
-                    ##print 'foo', np.array(datavec[200:210,5,0,1], dtype=np.int64)**2 + np.array(datavec[200:210,5,0,0], dtype=np.int64)**2
-                    if (delays is None) or redis_delays_valid(corr, tsbuf[win_to_ship]):
-                        delays = corr.get_coarse_delays()
-                    else:
-                        logger.info('Redis delays newer than data -- not using them this time')
-                    # rotate the phases of the data array in place
-                    unwrap_delays(corr, datavec, delays)
-                    ##print 'bar', np.array(datavec[200:210,5,0,1], dtype=np.int64)**2 + np.array(datavec[200:210,5,0,0], dtype=np.int64)**2
-
-                    write_data(writer,datavec,tsbuf[win_to_ship], meta_buf[win_to_ship], noise_demod=corr.noise_switched_from_redis(), phased_to=phased_to)
-                    # Write to redis
-                    redis.Redis.set(corr.redis_host, 'RECEIVER:xeng_raw0', datavec[:].tostring())
-                    corr.redis_host.set('RECEIVER:timestamp0', tsbuf[win_to_ship])
+            corr.redis_host.hincrby('corr_grab:n_integrations', 'val', 1)
+            # When the buffer ID changes, ship the window 1/2 a circ. buffer behind
+            if datctr[win_to_ship] == corr_chans:
+                int_cnt += 1
+                #logger.info('# New integration is complete after %.2f seconds (mcnt offset %.2f) #'%(this_int - last_int, tsbuf[win_to_ship] - tsbuf[(win_to_ship-1)%N_WINDOWS]))
+                datavec = np.reshape(datbuf[win_to_ship], [corr.n_bands * 2048, corr.n_bls, 1, 2]) #chans * bls * pols * r/i
+                # Write integration
+                phased_to = np.array([corr.array.get_sidereal_time(tsbuf[win_to_ship]), corr.array.lat_r])
+                # If the accumulation timestamp is later than the coarse delays
+                # stored in redis, get the new delays set and use that for phase
+                # rotation. Otherwise, keep using the last delay set.
+                # This assumes that delays are updated in redis slowly compared to
+                # integration time, which should be a safe assumption.
+                ##print 'foo', np.array(datavec[200:210,5,0,1], dtype=np.int64)**2 + np.array(datavec[200:210,5,0,0], dtype=np.int64)**2
+                if (delays is None) or redis_delays_valid(corr, tsbuf[win_to_ship]):
+                    delays = corr.get_coarse_delays()
                 else:
-                    logger.error('Packets in buffer %d: %d ####'%(win_to_ship, datctr[win_to_ship]))
+                    logger.info('Redis delays newer than data -- not using them this time')
+                # rotate the phases of the data array in place
+                unwrap_delays(corr, datavec, delays)
+                ##print 'bar', np.array(datavec[200:210,5,0,1], dtype=np.int64)**2 + np.array(datavec[200:210,5,0,0], dtype=np.int64)**2
+
+                # Write to redis
+                redis.Redis.hmset(corr.redis_host, 'RECEIVER:xeng_raw0', {'val':datavec[:].tostring(), 'timestamp':tsbuf[win_to_ship]})
+                if receiver_enable or opts.nometa:
+                    write_data(writer,datavec,tsbuf[win_to_ship], meta_buf[win_to_ship], noise_demod=corr.noise_switched_from_redis(), phased_to=phased_to)
+                else:
+                    logger.info('Got an integration but receiver is not enabled')
+            elif int_cnt > N_WINDOWS: #ignore the first empty buffers
+                logger.error('Packets in buffer %d: %d ####'%(win_to_ship, datctr[win_to_ship]))
+                corr.redis_host.hincrby('corr_grab:n_lost_packets', 'val', corr_chans - datctr[win_to_ship])
+
             last_buf_id = buf_id
             datctr[win_to_ship] = 0
             last_int = this_int
-            if not receiver_enable:
-                logger.info('Got an integration but receiver is not enabled')
-                #time.sleep(1)
                  
         else:
             if tsbuf[buf_id] != last_timestamp:
                 if time.time() > (last_recv_rst + 5): #don't allow a reset until at least 5s after the last
                     logger.error('(check 2) -- timestamp desync! This timestamp (xeng %d) is %.5f, last one was %.5f'%(xeng, tsbuf[buf_id], last_timestamp))
                     logger.info('Rearming vaccs!')
+                    corr.redis_host.hincrby('corr_grab:n_tge_rearms', 'val', 1)
                     corr.arm_vaccs(time.time() + 5)
                     [xeng.reset_gbe() for xeng in corr.xengs]
                     last_recv_rst = time.time()

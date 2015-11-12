@@ -173,11 +173,12 @@ class UnpackableStruct(Unpackable):
         Recursively update the values held by the entries in the struct
         """
         #print self.varname, 'Extracting a total of %d bytes (%s) (data size = %d bytes)'%(self.size, self.fmt, len(data))
+        self.dict_repr = {}
         for entry in self.entries:
             #print 'extracting:', entry.varname, 'offset:', entry.offset, 'size', entry.size
             if isinstance(entry, UnpackableStruct):
                 #print entry.varname, 'is a struct -- recursing'
-                entry.extract_attr(data, offset=offset+entry.offset)
+                self.dict_repr[entry.varname] = entry.extract_attr(data, offset=offset+entry.offset)
             else:
                 #print 'Extracting', entry.fmt, 'struct offset', offset, 'entry offset', entry.offset
                 val = struct.unpack_from((entry.end or self.end) + entry.fmt, data, offset + entry.offset)
@@ -187,6 +188,8 @@ class UnpackableStruct(Unpackable):
                     entry.val = val[0]
                 else:
                     entry.val = val
+                self.dict_repr[entry.varname] = entry.val
+        return self.dict_repr
 
 def get_meta_struct(maxant=10, maxsrc=16, maxagc=40):
    tel_def = [
