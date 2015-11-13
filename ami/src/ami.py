@@ -86,8 +86,8 @@ class AmiDC(object):
             # Also write to the same roach's GPIO outputs.
             feng.roachhost.write('gpio_switch_states', dat.tostring())
 
-    def report_alive(self, name, timeout=5):
-        self.redis_host.set(name+'_ALIVE', time.time(), ex=timeout)
+    def report_alive(self, name, arguments=[], timeout=5):
+        self.redis_host.set(name+'_ALIVE', arguments, ex=timeout)
 
     def set_phase_switches(self, override=None):
         '''

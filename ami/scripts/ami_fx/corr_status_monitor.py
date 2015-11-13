@@ -6,6 +6,7 @@ import os
 import yaml
 import numpy as np
 from corr import sim
+import logging
 
 
 def get_free_disk_space(path):
@@ -14,9 +15,11 @@ def get_free_disk_space(path):
 
 def get_rain(r, c):
     corr_conf = c['Configuration']['correlator']['hardcoded']
+    n_ants = corr_conf['n_ants']
+    n_chans = c['FEngine']['n_chans']
     rv = []
     for ant in range(corr_conf['n_ants']):
-        rv += [r.get('STATUS:noise_demod:ANT%d_low'%ant) + r.get('STATUS:noise_demod:ANT%d_high'%ant)]
+        rv += [(r.get('STATUS:noise_demod:ANT%d_low'%ant) or [0 for x in range(n_chans)]) + (r.get('STATUS:noise_demod:ANT%d_high'%ant) or [0 for x in range(n_chans)])]
     return -np.array(rv)*10000
 
 def get_mean_powers(r, c):
@@ -58,12 +61,15 @@ def check_scripts(r, scripts):
     keys = r.keys()
     is_alive = [False] * n_scripts
     paths = [''] * n_scripts
+    opts = [[]] * n_scripts
     for sn, script in enumerate(scripts):
         for k in r.keys():
-            if k.endswith(script+'_ALIVE'):
-                is_alive[sn] = True
-                paths[sn] = k.rstrip('_ALIVE')
-    return is_alive, paths
+            if k.endswith('_ALIVE'):
+                if script in k:
+                    is_alive[sn] = True
+                    opts[sn] = r.get(k)
+                    paths[sn] = k.rstrip('_ALIVE')
+    return is_alive, paths, opts
         
 def display_status(screen, r):
 
@@ -121,14 +127,14 @@ def display_status(screen, r):
         curline = min(ymax-1, curline+2)
 
         # Script alive checks
-        is_alive, paths = check_scripts(r, scripts)
+        is_alive, paths, opts = check_scripts(r, scripts)
         screen.addstr(curline, col, 'SCRIPT STATUS')
         curline = min(ymax-1, curline+2)
 
         for sn, s in enumerate(scripts):
             if is_alive[sn]:
                 screen.addstr(curline, col, s+' is alive ', valcol)
-                screen.addstr('(%s)'%paths[sn])
+                screen.addstr('(%s)'%(' '.join(str(x) for x in opts[sn])))
             else:
                 screen.addstr(curline, col, s+' is not alive', errcol)
             curline = min(ymax-1, curline+1)
@@ -249,4 +255,5 @@ def display_status(screen, r):
         
 
 if __name__ == '__main__':
+    config_redis.logger = logging.getLogger(None)
     curses.wrapper(display_status, config_redis.JsonRedis('ami_redis_host'))
