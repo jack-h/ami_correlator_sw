@@ -94,8 +94,8 @@ if __name__ == '__main__':
         if (this_spectra_check != this_spectra):
             logger.warning('Looks like a spectra changed during read. Expected %d. Check after read of %d'%(this_spectra, this_spectra_check))
             corr.redis_host.hincrby('corr_monitor:auto_spectra_overrun', 'val', 1)
-        if ((last_spectra + 1)%256 != this_spectra_check):
-            logger.warning('Looks like a spectra was missed. Expected %d. Check after read of %d'%(last_spectra+1, this_spectra_check))
+        if ((last_spectra+1)&0xff != this_spectra_check):
+            logger.warning('Looks like a spectra was missed. Expected %d. Check after read of %d'%((last_spectra+1)&0xff, this_spectra_check))
             corr.redis_host.hincrby('corr_monitor:auto_spectra_missing', 'val', 1)
         last_spectra = this_spectra_check
 
