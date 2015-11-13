@@ -59,7 +59,7 @@ if __name__ == '__main__':
     x = np.zeros_like(corr.all_fengs_multithread('get_spectra', autoflip=False, safe=False))
     spectra = np.zeros_like(x)
     logger.info('Beginning spectra grab loop')
-    last_spectra = 0
+    last_spectra = corr.fengs[-1].wait_for_new_spectra(last_spectra=0) 
 
     while(True):
         tic = time.time()
@@ -75,8 +75,8 @@ if __name__ == '__main__':
         if (this_spectra_check != this_spectra):
             logger.warning('Looks like a spectra changed during read. Expected %d. Check after read of %d'%(this_spectra, this_spectra_check))
             corr.redis_host.hincrby('corr_monitor:auto_spectra_overrun', 'val', 1)
-        if (last_spectra != this_spectra_check-1):
-            logger.warning('Looks like a spectra was missed. Expected %d. Check after read of %d'%(last_spectra+1, this_spectra_check))
+        if ((last_spectra+1)&0xff != this_spectra_check):
+            logger.warning('Looks like a spectra was missed. Expected %d. Check after read of %d'%((last_spectra+1)&0xff, this_spectra_check))
             corr.redis_host.hincrby('corr_monitor:auto_spectra_missing', 'val', 1)
         last_spectra = this_spectra_check
 
