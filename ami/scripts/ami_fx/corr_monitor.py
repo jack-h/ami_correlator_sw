@@ -8,8 +8,16 @@ import socket
 import ami.ami as AMI
 from ami.helpers import uint2int, dbs, add_default_log_handlers
 import logging
+import Queue
+import threading
 
 logger = add_default_log_handlers(logging.getLogger("%s:%s"%(__file__,__name__)))
+
+def get_eq(in_q, out_q):
+    while(True):
+        feng = in_q.get()
+        out_q.put([feng.num, feng.get_async_spectra(autoflip=False)])
+        in_q.task_done()
 
 if __name__ == '__main__':
     from optparse import OptionParser
@@ -58,24 +66,35 @@ if __name__ == '__main__':
     logger.info('Grabbing a dummy spectra for array sizing')
     x = np.zeros_like(corr.all_fengs_multithread('get_spectra', autoflip=False, safe=False))
     spectra = np.zeros_like(x)
+
+    # Set up multiple threads
+    in_q = Queue.Queue(maxsize=corr.n_fengs)
+    out_q = Queue.Queue(maxsize=corr.n_fengs)
+    for t in range(corr.n_fengs):
+        worker = threading.Thread(target=get_eq, args=(in_q, out_q))
+        worker.setDaemon(True)
+        worker.start()
+
     logger.info('Beginning spectra grab loop')
-    last_spectra = 0
+    last_spectra = corr.fengs[-1].wait_for_new_spectra(last_spectra=0) 
 
     while(True):
         tic = time.time()
         this_spectra = corr.fengs[-1].wait_for_new_spectra(last_spectra=last_spectra) 
-        #for i in range(16):
-        #    t0 = time.time()
-        #    spectra[i] = corr.fengs[i].get_async_spectra(autoflip=False) 
-        #    t1 = time.time()
-        #    print '%.3fs to catch data from F-engine %d'%(t1-t0, i)
-        spectra = corr.all_fengs_multithread('get_async_spectra', autoflip=False)
+        for fn, feng in enumerate(corr.fengs):
+            in_q.put(feng)
+        in_q.join()
+        for fn, feng in enumerate(corr.fengs):
+            num, s = out_q.get()
+            out_q.task_done()
+            spectra[num] = s
+        #spectra = corr.all_fengs_multithread('get_async_spectra', autoflip=False)
         this_spectra_check = corr.fengs[-1].read_int('auto_snap_acc_cnt')
 
         if (this_spectra_check != this_spectra):
             logger.warning('Looks like a spectra changed during read. Expected %d. Check after read of %d'%(this_spectra, this_spectra_check))
             corr.redis_host.hincrby('corr_monitor:auto_spectra_overrun', 'val', 1)
-        if (last_spectra != this_spectra_check-1):
+        if ((last_spectra + 1)%256 != this_spectra_check):
             logger.warning('Looks like a spectra was missed. Expected %d. Check after read of %d'%(last_spectra+1, this_spectra_check))
             corr.redis_host.hincrby('corr_monitor:auto_spectra_missing', 'val', 1)
         last_spectra = this_spectra_check
@@ -86,7 +105,8 @@ if __name__ == '__main__':
             d = spectra[fn] * np.abs(eq[fn])**2
             corr.redis_host.set(key, d.tolist(), ex=expire_time)
         logger.info('New monitor data sent at time %.2f'%time.time())
-	corr.report_alive(__file__)
+        
+	corr.report_alive(__file__, sys.argv)
         if opts.plot != 0:
             x += spectra #* np.abs(eq)**2
             grab_n += 1
