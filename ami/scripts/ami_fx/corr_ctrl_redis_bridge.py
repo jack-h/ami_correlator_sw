@@ -114,7 +114,7 @@ if __name__ == '__main__':
     corr_cnt = 0
     while(True):
         if(ctrl.try_recv() == 0):
-	    corr.report_alive(__file__)
+	    corr.report_alive(__file__, sys.argv)
             # bridge received meta data -> redis
 	    print 'Writing Redis keys at time', time.time()
             #struct_to_redis(corr.redis_host, ctrl.meta_data, prefix='CONTROL:')

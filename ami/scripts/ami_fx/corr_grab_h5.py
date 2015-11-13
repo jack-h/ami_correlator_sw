@@ -188,7 +188,7 @@ if __name__ == '__main__':
             logger.error('(check 1) timestamp desync on xeng %d, (2xXENG=%d, mod(mcnt,4096) = %d)'%(xeng, xeng*2, mcnt%4096))
 
         if (buf_id != last_buf_id):
-	    corr.report_alive(__file__)
+	    corr.report_alive(__file__, sys.argv)
             sys.stdout.flush()
             if not opts.nometa:
                 # Before we deal with the new accumulation, get the current metadata
