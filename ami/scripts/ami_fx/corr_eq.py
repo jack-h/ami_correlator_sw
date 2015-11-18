@@ -92,10 +92,12 @@ if __name__ == '__main__':
 
     decimation=2
     vec_width = corr.fengs[0].n_chans
+    # turn off noise switch so we can sample powers
     for feng in corr.fengs:
-        # turn off noise switch so we can sample powers
         feng.noise_switch_enable(False)
-        time.sleep(1)
+    time.sleep(1)
+
+    for feng in corr.fengs:
         print "Computing new coefficients"
         d = np.zeros(vec_width)
         for n in range(opts.samples):
@@ -123,13 +125,10 @@ if __name__ == '__main__':
         if opts.plot and (feng.ant in ants_to_plot):
             pylab.figure(2)
             pylab.plot(eq,label='ANT %d, BAND %s'%(feng.ant,feng.band))
-            pylab.title("EQ coefficients")
+            pylab.title("Computed EQ coefficients")
             pylab.ylabel("Amplitude (linear)")
             pylab.xlabel("Decimated Channel Number")
             pylab.legend()
-        # save eq in a dictionary ready for pickling
-        coeffs['ANT%d_%s'%(feng.ant,feng.band)] = eq
-             
 
         if not load_new:
             if opts.same:
@@ -138,9 +137,12 @@ if __name__ == '__main__':
             else:
                 eq = coeffs['ANT%d_%s'%(feng.ant,feng.band)]
 
-        eq_str = format_eq(eq,bits=16,bp=6,imag=False)
-        feng.write('eq', eq_str)
-        rb = struct.unpack('>1024H', feng.read('eq',1024*2))
+        else:
+            coeffs['ANT%d_%s'%(feng.ant,feng.band)] = eq
+            eq_str = format_eq(eq,bits=16,bp=6,imag=False)
+            feng.write('eq', eq_str)
+
+        rb = struct.unpack('>2048H', feng.read('eq',1024*2*2))
         #pylab.figure(3)
         #pylab.plot(rb,label='ANT %d, BAND %s'%(feng.ant,feng.band))
         #pylab.title("EQ coefficients")
@@ -157,6 +159,12 @@ if __name__ == '__main__':
         print 'level width = %.3f, standard deviation of amplitude: %.3f' %(levelwidth, dev)
         print 'E = %.3f x dev:' %(levelwidth/dev)
         if opts.plot and (feng.ant in ants_to_plot):
+            pylab.figure(3)
+            pylab.plot(rb[1::2],label='ANT %d, BAND %s'%(feng.ant,feng.band))
+            pylab.title("Current EQ coefficients")
+            pylab.ylabel("Amplitude (linear)")
+            pylab.xlabel("Decimated Channel Number")
+            pylab.legend()
             pylab.figure(4)
             pylab.plot(np.real(quant),label='ANT %d, BAND %s'%(feng.ant,feng.band))
             pylab.title("Quantized signal (real part) (normalised to 1)")
