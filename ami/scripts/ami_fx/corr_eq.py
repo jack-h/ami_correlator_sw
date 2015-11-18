@@ -172,7 +172,9 @@ if __name__ == '__main__':
             pylab.xlabel("Channel Number")
             pylab.legend()
 
+        # put things back how they need to be for the monitor
         feng.noise_switch_enable(True)
+        feng.set_auto_capture(True)
 
 
     # save new coeffs if there are some
