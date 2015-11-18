@@ -486,10 +486,9 @@ class FEngine(Engine):
         if (not safe) and (self.read_int('auto_snap_acc_cnt') != self.acc_cnt):
             self._logger.warning('Autocorr snap looks like it changed during read')
         
-        for i in range(4):
-            d[i::8]   = s0[i::4]
-            d[i+4::8] = s1[i::4]
-        
+        d[0::2] = s0[:]
+        d[1::2] = s1[:]
+
         d /= (2**20 * float(self.fft_power_acc_len)) #2**20 for binary point compensation
         if autoflip and self.inv_band:
             d = d[::-1]
