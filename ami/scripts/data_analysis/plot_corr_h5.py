@@ -19,8 +19,8 @@ if __name__ == '__main__':
         help='Select which baseline index. Options are <bl0>,...,<bln>, or a range <bl0>_<bln>. Default=0')
     o.add_option('-m', '--mode', dest='mode', default='lin',
         help='Plotting mode: lin, log, real, imag, phs, comp. Default=log')
-    o.add_option('-p', '--pol', dest='pol', default='all',
-        help='Select which polarization to plot (xx,yy,xy,yx,all). Default=all')
+    o.add_option('-p', '--pol', dest='pol', default='xx',
+        help='Select which polarization to plot (xx,yy,xy,yx,all). Default=xx')
     o.add_option('--timescale', dest='time_scale', type='string', default='time',
         help='Select unit of time axis. time=hours since reference. ha=hour angle. lst=lst of observatory')
     o.add_option('-r', '--ra', type='string', default='23:23:58.45',
