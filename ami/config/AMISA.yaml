@@ -1,0 +1,200 @@
+#  PRIMARY header
+#  ==============
+#  
+#  The primary HDU serves three purposes:
+#  1. It indicates that the file contains FITS-IDI data.
+#  2. It carries general information that applies to all of the FITS-IDI data in the file.
+#  3. It carries a record of the processing performed on the data up to the point that
+#     the file was written.
+#  
+#  You need to have these keywords with these values in your header. No exceptions.
+#  
+#  BITPIX   8
+#  NAXIS    0
+#  EXTEND   T
+#  GROUPS   T
+#  GCOUNT   0
+#  PCOUNT   0
+#  
+#  Information about the processing up to the point where the FITS file was created
+#  should be recorded in HISTORY records in the primary header.
+#  
+#  We're also going to add in the CORRELAT keyword, just for the hell of it (it doesn't
+#  really have a function at the moment)
+
+PRIMARY:
+  BITPIX: 8
+  NAXIS:  0
+  EXTEND: T
+  GROUPS: T
+  GCOUNT: 0
+  PCOUNT: 0
+  CORRELAT: ROACH2
+  FXCORVER: '0.0'
+
+#  ARRAY_GEOMETRY table header
+#  ===========================
+#  
+#  The ARRAY_GEOMETRY tables define the arrays used in the file. Each ARRAY_GEOMETRY table 
+#  lists the antennas that are part of that array together with their coordinates. It also
+#  provides information about the time system used for that array.
+#  
+#  EXTVER  Array number
+#  ARRNAM  Array name
+#  FRAME   Coordinate frame
+#  ARRAYX  x coordinate of array center in m (important, check the convention!!)
+#  ARRAYY  y coordinate of array center in m
+#  ARRAYZ  z coordinate of array center in m
+#  NUMORB  Number of sattelites. Normally safe to assume this is zero.
+#  FREQ    Reference frequency
+#  TIMSYS  Time system
+#  RDATE   Reference date
+#  GSTIA0  Grenwich Sidereal time at 0 hrs
+#  DEGPDY  The Earth’s rotation rate in deg per day
+#  UT1UTC  UT1 - UTC
+#  IATUTC  IAT - UTC
+#  POLARX  x coordinate of north pole
+#  POLARY  y coordinate of north pole
+#  
+#  GSTIA0, DEGPDY, UT1UTC notes: The default values for the time system 
+#  are taken from http://fits.gsfc.nasa.gov/registry/fitsidi.html
+#  I haven't checked these are actually correct (on my todo list)! 
+#  
+#  ARRAYX, ARRAYY, ARRAYZ notes: The values below are for Medicina.
+#  These are VERY important and you'll have to change them. This might help:
+#  http://www.oc.nps.edu/oc2902w/coord/llhxyz.htm   
+
+ARRAY_GEOMETRY:
+  EXTANNAME: ARRAY_GEOMETRY
+  EXTVER: 1
+  ARRNAM: AMISA
+  FRAME: GEOCENTRIC
+  ARRAYX: 0.0
+  ARRAYY: 0.0
+  ARRAYZ: 0.0
+  NUMORB: 0
+  FREQ: 15000000000
+  TIMESYS: UTC
+  RDATE: &RDATE some_date
+  GSTIA0:  3.30909596261338038E+02
+  DEGPDY:  3.60985644973299998E+02
+  UT1UTC: -1.63126999999999995E-01
+  IATUTC:  3.30000000000000000E+01
+  POLARX:  2.08099999999999996E-01
+  POLARY:  2.80019999999999989E-01
+
+  antennas:
+    - ANNAME: 'amisa1'
+      MNTSTA: &MNTSTA 1
+      STAXOF: &STAXOF [0.0, 0.0, 0.0]
+      STABXYZ: [22.0076, 17.5829, 0.0106]
+      DERXYZ: &DERXYZ [0.0, 0.0, 0.0]
+      DIAMETER: &DIAMETER 3.0
+
+    - ANNAME: 'amisa2'
+      MNTSTA: *MNTSTA
+      STAXOF: *STAXOF
+      STABXYZ: [12.0739, 7.7928, -0.0006]
+      DERXYZ: *DERXYZ
+      DIAMETER: *DIAMETER
+
+    - ANNAME: 'amisa3'
+      MNTSTA: *MNTSTA
+      STAXOF: *STAXOF
+      STABXYZ: [17.0683, 7.8579, -0.0161]
+      DERXYZ: *DERXYZ
+      DIAMETER: *DIAMETER
+
+    - ANNAME: 'amisa4'
+      MNTSTA: *MNTSTA
+      STAXOF: *STAXOF
+      STABXYZ: [7.2304, 17.6676, 0.0585]
+      DERXYZ: *DERXYZ
+      DIAMETER: *DIAMETER
+
+    - ANNAME: 'amisa5'
+      MNTSTA: *MNTSTA
+      STAXOF: *STAXOF
+      STABXYZ: [14.4561, 27.8043, 0.0688]
+      DERXYZ: *DERXYZ
+      DIAMETER: *DIAMETER
+
+    - ANNAME: 'amisa6'
+      MNTSTA: *MNTSTA
+      STAXOF: *STAXOF
+      STABXYZ: [22.0568, 11.2184, -0.0230]
+      DERXYZ: *DERXYZ
+      DIAMETER: *DIAMETER
+
+    - ANNAME: 'amisa7'
+      MNTSTA: *MNTSTA
+      STAXOF: *STAXOF
+      STABXYZ: [5.7293, 12.2961, 0.0366]
+      DERXYZ: *DERXYZ
+      DIAMETER: *DIAMETER
+
+    - ANNAME: 'amisa8'
+      MNTSTA: *MNTSTA
+      STAXOF: *STAXOF
+      STABXYZ: [19.6578, 23.3406, 0.0340]
+      DERXYZ: *DERXYZ
+      DIAMETER: *DIAMETER
+
+    - ANNAME: 'amisa9'
+      MNTSTA: *MNTSTA
+      STAXOF: *STAXOF
+      STABXYZ: [9.4959, 24.5802, 0.0623]
+      DERXYZ: *DERXYZ
+      DIAMETER: *DIAMETER
+
+    - ANNAME: 'amisa10'
+      MNTSTA: *MNTSTA
+      STAXOF: *STAXOF
+      STABXYZ: [14.1166, 15.8486, 0.0302]
+      DERXYZ: *DERXYZ
+      DIAMETER: *DIAMETER
+
+#  ANTENNA table header
+#  ====================
+#  
+#  Not really that much to do here.
+#  
+#  The ANTENNA table contains information about the antennas used in a FITS-IDI
+#  file that may change with time or with frequency setup. These characteristics
+#  include the polarization properties of the feeds and the number of digitizer levels.
+
+#  NOPCAL      The number of polarised calibration constants
+#  POLTYPE     The feed polarisation parameterisation
+#  
+#  NOPCAL notes:
+#  The ANTENNA table may carry information about the polarization characteristics of the 
+#  feeds if this is known. If information about the polarization characteristics of the 
+#  feeds is contained in the table then the NOPCAL keyword shall have the value 2. If no
+#  information about the polarization characteristics is contained in the table then the
+#  NOPCAL keyword shall have the value 0.
+#  
+#  POLTYPE notes:
+#  If the table contains information about the polarization characteristics of the feeds 
+#  then the feed parameterization that is used shallbe indicated by the value of the POLTYPE
+#   keyword as given in Table 23. See “Feed Polarization” on page 17.
+#  ‘APPROX’ Linear approximation for circular feeds
+#  ‘X-Y LIN’ Linear approximation for linear feeds
+#  ‘ORI-ELP’ Orientation and ellipticity
+
+ANTENNA:
+  EXTNAME: ANTENNA
+  NOPCAL:  0
+  POLTYPE: X-Y LIN
+  COLUMNS:
+    TIME: *RDATE
+    TIME_INTERVAL: 1000000
+    ARRAY: 1
+    FREQID: 1
+    NO_LEVELS: 8
+    POLTYA: R
+    POLAA: 0
+    POLTYB: R
+    POLAB: 0
+
+
+
