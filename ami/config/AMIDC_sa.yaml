@@ -43,7 +43,7 @@ Configuration:
                 # 0 disables multicast
                 # 1 subscribes each receiver to a single address
                 # 2 subscribes each receiver to 2 addresses
-                multicast_order: 2
+                multicast_order: 0
                 network: 10.1.10.100
                 #port: 10000
             one_gbe:
@@ -54,7 +54,7 @@ Configuration:
                 ct_tvg: no
                 qdr_tvg: no
                 vacc_tvg: no
-            data_path: /media/data0
+            data_path: /export/data
 
 XEngine:
     n_chans: 204
@@ -63,7 +63,7 @@ XEngine:
     acc_len: 1024
 
     nodes:
-        - host: amanda
+        - host: alice
           band: 0
 
         - host: beatrice
@@ -75,7 +75,7 @@ XEngine:
         - host: daisy
           band: 3
 
-        - host: elizabeth
+        - host: amanda
           band: 4
 
         - host: felicity
@@ -95,8 +95,8 @@ XEngine:
 
 Array:
     # array location in degrees
-    lat: 52.2050
-    lon: 0.1190
+    lat: 52.1643335
+    lon: 0.0393611
 
 Antennas:
     - ant: 0
@@ -148,61 +148,61 @@ FEngine:
           phase_walsh : 1
           band: low
           adc: 0
-          host: amanda
+          host: alice
 
         - ant: 0
           phase_walsh : 1
           band: high
           adc: 1
+          host: alice
+
+        - ant: 1
+          phase_walsh : 2
+          band: low
+          adc: 0
+          host: beatrice
+
+        - ant: 1
+          phase_walsh : 2
+          band: high
+          adc: 1
+          host: beatrice
+
+        - ant: 2
+          phase_walsh : 3
+          band: low
+          adc: 0
+          host: charlotte
+
+        - ant: 2
+          phase_walsh : 3
+          band: high
+          adc: 1
+          host: charlotte
+
+        - ant: 3
+          phase_walsh : 4
+          band: low
+          adc: 0
+          host: daisy
+
+        - ant: 3
+          phase_walsh : 4
+          band: high
+          adc: 1
+          host: daisy
+
+        - ant: 4
+          phase_walsh : 5
+          band: low
+          adc: 0
           host: amanda
 
-        - ant: 1
-          phase_walsh : 2
-          band: low
-          adc: 0
-          host: beatrice
-
-        - ant: 1
-          phase_walsh : 2
-          band: high
-          adc: 1
-          host: beatrice
-
-        - ant: 2
-          phase_walsh : 3
-          band: low
-          adc: 0
-          host: charlotte
-
-        - ant: 2
-          phase_walsh : 3
-          band: high
-          adc: 1
-          host: charlotte
-
-        - ant: 3
-          phase_walsh : 4
-          band: low
-          adc: 0
-          host: daisy
-
-        - ant: 3
-          phase_walsh : 4
-          band: high
-          adc: 1
-          host: daisy
-
-        - ant: 4
-          phase_walsh : 5
-          band: low
-          adc: 0
-          host: elizabeth
-
         - ant: 4
           phase_walsh : 5
           band: high
           adc: 1
-          host: elizabeth
+          host: amanda
 
         - ant: 5
           phase_walsh : 6
